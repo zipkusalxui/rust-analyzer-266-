@@ -112,6 +112,12 @@ namespace RustAnalyzer
 
         private static bool IsMethodUsed(IMethodSymbol method, SyntaxNodeAnalysisContext context)
         {
+            // Ignore override methods
+            if (method.IsOverride)
+            {
+                return true;
+            }
+
             var root = context.Node.SyntaxTree.GetRoot(context.CancellationToken);
             var invocations = root.DescendantNodes()
                 .OfType<InvocationExpressionSyntax>();
