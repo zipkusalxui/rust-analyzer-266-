@@ -21,7 +21,7 @@ namespace RustAnalyzer
         };
 
         private static readonly string Title = "Invalid PrefabName comparison";
-        private static readonly string MessageFormat = "String '{0}' does not exist in StringPool. Make sure to use a valid prefab name and StringPool.Get()";
+        private static readonly string MessageFormat = "String '{0}' does not exist in StringPool. {1}";
         private static readonly string Description = "Direct string comparisons with BaseNetworkable's PrefabName or ShortPrefabName should use StringPool.Get() and the string must exist in StringPool.";
 
         private const string Category = "Correctness";
@@ -104,10 +104,19 @@ namespace RustAnalyzer
 
                 if (!foundMatch)
                 {
+                    var suggestions = StringPool.toNumber != null 
+                        ? StringDistance.FindSimilarShortNames(stringValue, StringPool.toNumber.Keys)
+                        : Enumerable.Empty<string>();
+
+                    string suggestionMessage = suggestions.Any()
+                        ? $"Did you mean one of these: {string.Join(", ", suggestions)}?"
+                        : "Make sure to use a valid prefab short name.";
+
                     var diagnostic = Diagnostic.Create(
                         Rule,
                         literalExpression.GetLocation(),
-                        stringValue);
+                        stringValue,
+                        suggestionMessage);
                     context.ReportDiagnostic(diagnostic);
                 }
             }
@@ -116,10 +125,19 @@ namespace RustAnalyzer
                 // For PrefabName, directly check if it exists in StringPool
                 if (StringPool.toNumber == null || !StringPool.toNumber.ContainsKey(stringValue))
                 {
+                    var suggestions = StringPool.toNumber != null 
+                        ? StringDistance.FindSimilarPrefabs(stringValue, StringPool.toNumber.Keys)
+                        : Enumerable.Empty<string>();
+
+                    string suggestionMessage = suggestions.Any()
+                        ? $"Did you mean one of these: {string.Join(", ", suggestions)}?"
+                        : "Make sure to use a valid prefab path.";
+
                     var diagnostic = Diagnostic.Create(
                         Rule,
                         literalExpression.GetLocation(),
-                        stringValue);
+                        stringValue,
+                        suggestionMessage);
                     context.ReportDiagnostic(diagnostic);
                 }
             }
