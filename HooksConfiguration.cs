@@ -47,15 +47,9 @@ namespace RustAnalyzer
                 return false;
 
             var methodSignatureString = methodSignature.ToString();
-            Debug.WriteLine($"[HooksConfiguration] Hooks count: {_hooks.Count}");
+           
             var find = _hooks.Where(s => s.HookName == methodSignature.HookName).ToList();
 
-            foreach (var f in find)
-            {
-                Debug.WriteLine($"[HooksConfiguration] IsHook: {methodSignatureString} find {f}");
-            }
-
-            Debug.WriteLine($"[HooksConfiguration] IsHook: {methodSignatureString} find {string.Join(",", find)}");
             return _hooks.Any(s => s.ToString().Equals(methodSignatureString));
         }
 
@@ -94,7 +88,7 @@ namespace RustAnalyzer
                 HookName = method.Name,
                 HookParameters = parameterTypes
             };
-            
+
             return hookModel;
         }
 
