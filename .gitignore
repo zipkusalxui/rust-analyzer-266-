@@ -1,0 +1,52 @@
+# Build Folders
+bin/
+obj/
+
+# User-specific files
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
+
+# Auto-generated files
+*.log
+*.tlog
+*.cache
+*.csproj.user
+*.rsuser
+*.msbuild.sln.cache
+
+# Visual Studio-specific
+.vs/
+.vscode/
+
+# Rider-specific
+.idea/
+*.sln.iml
+
+# Debug and Release configurations
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa]rm/
+[Aa]rm64/
+
+# NuGet Packages
+*.nupkg
+*.snupkg
+packages/
+*.nuget.props
+
+# Other
+*.pidb
+*.svclog
+*.pdb
+*.mdb
+*.opendb
+*.ldb
+
+# Dotnet-specific
+project.lock.json
+project.fragment.lock.json
+artifacts/
