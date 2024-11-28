@@ -87,7 +87,7 @@ namespace RustAnalyzer
             }
         }
 
-        static BaseNetworkableAnalyzer()
+        static StringPoolGetAnalyzer()
         {
             // Initialize prefix cache
             foreach (var path in PrefabPaths)
