@@ -116,7 +116,8 @@ namespace RustAnalyzer
                 new MethodConfig("ItemManager", "CreateByName", new List<int> { 0 }),
                 new MethodConfig("ItemManager", "FindItemDefinition", new List<int> { 0 }),
                 new MethodConfig("GameManager", "LoadPrefab", new List<int> { 0 }),
-                new MethodConfig("PrefabAttribute", "Find", new List<int> { 0 })
+                new MethodConfig("PrefabAttribute", "Find", new List<int> { 0 }),
+                new MethodConfig("StringPool", "Get", new List<int> { 0 }),
             };
 
             foreach (var methodConfig in knownMethods)
