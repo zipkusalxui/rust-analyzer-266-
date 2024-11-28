@@ -2,15 +2,13 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
-using Microsoft.CodeAnalysis.FindSymbols;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Collections.Concurrent;
-using System.Linq;
-using System.IO;
 using System.Diagnostics;
-using System.Threading.Tasks;
+using System.IO;
+using System.Linq;
 
 namespace RustAnalyzer
 {
@@ -18,7 +16,7 @@ namespace RustAnalyzer
     public class BaseNetworkableAnalyzer : DiagnosticAnalyzer
     {
         public const string DiagnosticId = "RUST0005";
-        
+
         private static readonly string[] PossibleBaseNetworkableNames = new[]
         {
             "BaseNetworkable",
@@ -47,8 +45,16 @@ namespace RustAnalyzer
             Debug.WriteLine("Initializing analyzer");
             context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
             context.EnableConcurrentExecution();
+            context.RegisterCompilationStartAction(InitializeCacheAndRegisterActions);
+        }
+
+        private void InitializeCacheAndRegisterActions(CompilationStartAnalysisContext context)
+        {
+            // Initialize caches
+            InitializeMethodCache(context.Compilation);
+
             context.RegisterSyntaxNodeAction(AnalyzeBinaryExpression, SyntaxKind.EqualsExpression);
-            context.RegisterSyntaxNodeAction(AnalyzeStringPoolGet, SyntaxKind.InvocationExpression);
+            context.RegisterSyntaxNodeAction(AnalyzeInvocationExpression, SyntaxKind.InvocationExpression);
         }
 
         // Cache for fast prefab lookup
@@ -58,31 +64,28 @@ namespace RustAnalyzer
                 .Select(p => p.ToLowerInvariant())
         );
 
-        private static readonly ConcurrentDictionary<string, bool> PrefabPathCache 
+        private static readonly ConcurrentDictionary<string, bool> PrefabPathCache
             = new ConcurrentDictionary<string, bool>();
-        private static readonly ConcurrentDictionary<string, List<string>> PrefixCache 
+        private static readonly ConcurrentDictionary<string, List<string>> PrefixCache
             = new ConcurrentDictionary<string, List<string>>();
 
-        // Cache for methods
-        private static readonly ConcurrentDictionary<(string AssemblyName, string TypeName, string MethodName), bool> MethodCache 
-            = new ConcurrentDictionary<(string, string, string), bool>();
+        // Cache for methods that use StringPool.Get
+        private static readonly ConcurrentDictionary<(string TypeName, string MethodName), MethodConfig> MethodCache
+            = new ConcurrentDictionary<(string, string), MethodConfig>();
 
-        // Known methods that use StringPool.Get
-        private static readonly HashSet<(string TypeName, string MethodName)> KnownStringPoolMethods 
-            = new HashSet<(string, string)>
+        private class MethodConfig
         {
-            ("GameManager", "CreateEntity"),
-            ("BaseEntity", "Spawn"),
-            ("PrefabAttribute", "server"),
-            ("PrefabAttribute", "client"),
-            ("GameManifest", "PathToStringID"),
-            ("StringPool", "Add"),
-            ("GameManager", "FindPrefab"),
-            ("ItemManager", "CreateByName"),
-            ("ItemManager", "FindItemDefinition"),
-            ("GameManager", "LoadPrefab"),
-            ("PrefabAttribute", "Find")
-        };
+            public string TypeName { get; }
+            public string MethodName { get; }
+            public List<int> ParameterIndices { get; }
+
+            public MethodConfig(string typeName, string methodName, List<int> parameterIndices)
+            {
+                TypeName = typeName;
+                MethodName = methodName;
+                ParameterIndices = parameterIndices;
+            }
+        }
 
         static BaseNetworkableAnalyzer()
         {
@@ -96,6 +99,67 @@ namespace RustAnalyzer
                     (key, list) => { list.Add(path); return list; }
                 );
             }
+        }
+
+        private void InitializeMethodCache(Compilation compilation)
+        {
+            // Pre-populate MethodCache with known methods
+            var knownMethods = new List<MethodConfig>
+            {
+                new MethodConfig("GameManager", "CreateEntity", new List<int> { 0 }),
+                new MethodConfig("BaseEntity", "Spawn", new List<int>()),
+                new MethodConfig("PrefabAttribute", "server", new List<int>()),
+                new MethodConfig("PrefabAttribute", "client", new List<int>()),
+                new MethodConfig("GameManifest", "PathToStringID", new List<int> { 0 }),
+                new MethodConfig("StringPool", "Add", new List<int> { 0 }),
+                new MethodConfig("GameManager", "FindPrefab", new List<int> { 0 }),
+                new MethodConfig("ItemManager", "CreateByName", new List<int> { 0 }),
+                new MethodConfig("ItemManager", "FindItemDefinition", new List<int> { 0 }),
+                new MethodConfig("GameManager", "LoadPrefab", new List<int> { 0 }),
+                new MethodConfig("PrefabAttribute", "Find", new List<int> { 0 })
+            };
+
+            foreach (var methodConfig in knownMethods)
+            {
+                MethodCache.TryAdd((methodConfig.TypeName, methodConfig.MethodName), methodConfig);
+            }
+
+            // Analyze the compilation to find methods that call StringPool.Get
+            var stringPoolType = compilation.GetTypeByMetadataName("StringPool");
+            if (stringPoolType != null)
+            {
+                var methodsUsingStringPoolGet = new HashSet<IMethodSymbol>();
+                foreach (var tree in compilation.SyntaxTrees)
+                {
+                    var semanticModel = compilation.GetSemanticModel(tree);
+                    var invocations = tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>();
+                    foreach (var invocation in invocations)
+                    {
+                        var methodSymbol = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+                        if (methodSymbol == null) continue;
+
+                        if (IsStringPoolGetMethod(methodSymbol))
+                        {
+                            var containingMethod = methodSymbol.ContainingSymbol as IMethodSymbol;
+                            if (containingMethod != null)
+                            {
+                                var key = (containingMethod.ContainingType.Name, containingMethod.Name);
+                                if (!MethodCache.ContainsKey(key))
+                                {
+                                    MethodCache.TryAdd(key, new MethodConfig(containingMethod.ContainingType.Name, containingMethod.Name, new List<int>()));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private bool IsStringPoolGetMethod(IMethodSymbol methodSymbol)
+        {
+            return methodSymbol.IsStatic &&
+                   methodSymbol.Name == "Get" &&
+                   methodSymbol.ContainingType.Name == "StringPool";
         }
 
         private bool IsValidPrefabPath(string path)
@@ -140,7 +204,7 @@ namespace RustAnalyzer
         {
             Debug.WriteLine("Analyzing binary expression");
             var binaryExpression = (BinaryExpressionSyntax)context.Node;
-            
+
             var leftMemberAccess = binaryExpression.Left as MemberAccessExpressionSyntax;
             var rightMemberAccess = binaryExpression.Right as MemberAccessExpressionSyntax;
 
@@ -155,7 +219,7 @@ namespace RustAnalyzer
 
             var literalExpression = leftLiteral ?? rightLiteral;
             var memberAccess = leftMemberAccess ?? rightMemberAccess;
-            
+
             if (literalExpression == null || memberAccess == null)
             {
                 Debug.WriteLine("Missing literal or member access");
@@ -183,7 +247,7 @@ namespace RustAnalyzer
 
                 if (!foundMatch)
                 {
-                    var suggestions = StringPool.toNumber != null 
+                    var suggestions = StringPool.toNumber != null
                         ? StringDistance.FindSimilarShortNames(stringValue, StringPool.toNumber.Keys)
                         : Enumerable.Empty<string>();
 
@@ -205,7 +269,7 @@ namespace RustAnalyzer
             {
                 if (StringPool.toNumber == null || !StringPool.toNumber.ContainsKey(stringValue))
                 {
-                    var suggestions = StringPool.toNumber != null 
+                    var suggestions = StringPool.toNumber != null
                         ? StringDistance.FindSimilarPrefabs(stringValue, StringPool.toNumber.Keys)
                         : Enumerable.Empty<string>();
 
@@ -225,168 +289,93 @@ namespace RustAnalyzer
             }
         }
 
-        private void AnalyzeStringPoolGet(SyntaxNodeAnalysisContext context)
+        private void AnalyzeInvocationExpression(SyntaxNodeAnalysisContext context)
         {
             var invocation = (InvocationExpressionSyntax)context.Node;
-            Debug.WriteLine($"Analyzing StringPool.Get call at {invocation.GetLocation()}");
-            
-            if (!IsStringPoolGetCall(invocation, context.SemanticModel))
-            {
-                Debug.WriteLine("Not a StringPool.Get call");
-                return;
-            }
+            Debug.WriteLine($"Analyzing invocation at {invocation.GetLocation()}");
 
-            AnalyzeStringPoolGetCall(context, invocation);
+            var semanticModel = context.SemanticModel;
+            var methodSymbol = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+            if (methodSymbol == null)
+                return;
+
+            var methodConfig = GetMethodConfig(methodSymbol);
+            if (methodConfig == null)
+                return;
+
+            var arguments = invocation.ArgumentList.Arguments;
+            foreach (var index in methodConfig.ParameterIndices)
+            {
+                if (arguments.Count > index)
+                {
+                    var argument = arguments[index].Expression;
+                    AnalyzeArgumentForPrefabPath(context, argument);
+                }
+            }
         }
 
-        private void AnalyzeStringPoolGetCall(SyntaxNodeAnalysisContext context, InvocationExpressionSyntax invocation)
+        private MethodConfig? GetMethodConfig(IMethodSymbol methodSymbol)
+        {
+            var key = (methodSymbol.ContainingType.Name, methodSymbol.Name);
+
+            if (MethodCache.TryGetValue(key, out var methodConfig))
+            {
+                return methodConfig;
+            }
+
+            // Optionally, you can add code here to analyze unknown methods and add them to the cache
+            return null;
+        }
+
+        private void AnalyzeArgumentForPrefabPath(SyntaxNodeAnalysisContext context, ExpressionSyntax argument)
         {
             var semanticModel = context.SemanticModel;
-            var arguments = invocation.ArgumentList.Arguments;
 
-            if (arguments.Count == 0)
-                return;
-
-            var firstArg = arguments[0].Expression;
-            string? stringValue = null;
-
-            // Quick check for literals
-            if (firstArg is LiteralExpressionSyntax literal)
+            if (argument is LiteralExpressionSyntax literal)
             {
-                stringValue = literal.Token.ValueText;
+                var stringValue = literal.Token.ValueText;
                 if (!IsValidPrefabPath(stringValue))
                 {
                     ReportDiagnostic(
                         context,
-                        firstArg.GetLocation(),
+                        literal.GetLocation(),
                         stringValue,
                         GetSuggestionMessage(stringValue)
                     );
                 }
-                return;
             }
-
-            // Analysis for non-literal expressions
-            var dataFlow = semanticModel.AnalyzeDataFlow(firstArg);
-            if (dataFlow?.DataFlowsIn != null)
+            else
             {
-                foreach (var symbol in dataFlow.DataFlowsIn)
+                var dataFlow = semanticModel.AnalyzeDataFlow(argument);
+                if (dataFlow?.DataFlowsIn != null)
                 {
-                    if (symbol == null) continue;
-
-                    var literals = GetStringLiteralsFromSymbol(symbol, semanticModel);
-                    foreach (var kvp in literals)
+                    foreach (var symbol in dataFlow.DataFlowsIn)
                     {
-                        if (!IsValidPrefabPath(kvp.Key))
+                        if (symbol == null) continue;
+
+                        var literals = GetStringLiteralsFromSymbol(symbol, semanticModel);
+                        foreach (var kvp in literals)
                         {
-                            ReportDiagnostic(
-                                context,
-                                kvp.Value,
-                                kvp.Key,
-                                GetSuggestionMessage(kvp.Key)
-                            );
+                            if (!IsValidPrefabPath(kvp.Key))
+                            {
+                                ReportDiagnostic(
+                                    context,
+                                    kvp.Value,
+                                    kvp.Key,
+                                    GetSuggestionMessage(kvp.Key)
+                                );
+                            }
                         }
                     }
                 }
             }
-        }
-
-        private bool IsStringPoolGetCall(InvocationExpressionSyntax invocation, SemanticModel semanticModel, HashSet<IMethodSymbol>? visitedMethods = null)
-        {
-            visitedMethods ??= new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
-
-            var methodSymbol = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
-            if (methodSymbol == null)
-            {
-                Debug.WriteLine("No method symbol found");
-                return false;
-            }
-
-            // Check cache first
-            var cacheKey = (
-                methodSymbol.ContainingAssembly?.Name ?? "Unknown",
-                methodSymbol.ContainingType.Name,
-                methodSymbol.Name
-            );
-
-            if (MethodCache.TryGetValue(cacheKey, out bool cachedResult))
-            {
-                Debug.WriteLine($"Cache hit for {cacheKey.Item2}.{cacheKey.Item3}");
-                return cachedResult;
-            }
-
-            // Prevent infinite recursion
-            if (!visitedMethods.Add(methodSymbol))
-            {
-                Debug.WriteLine($"Already visited method {methodSymbol.Name}");
-                return false;
-            }
-
-            Debug.WriteLine($"Analyzing method: {methodSymbol.ToDisplayString()} (Static: {methodSymbol.IsStatic})");
-
-            bool result = false;
-
-            // Direct StringPool.Get call
-            if (methodSymbol.IsStatic && methodSymbol.Name == "Get" && methodSymbol.ContainingType.Name == "StringPool")
-            {
-                Debug.WriteLine("Found direct StringPool.Get call");
-                result = true;
-            }
-            // Check known methods that use StringPool.Get internally
-            else if (KnownStringPoolMethods.Contains((methodSymbol.ContainingType.Name, methodSymbol.Name)))
-            {
-                Debug.WriteLine($"Found known method that uses StringPool.Get: {methodSymbol.ContainingType.Name}.{methodSymbol.Name}");
-                
-                // For methods like CreateEntity, verify the first argument is a string literal or path
-                if (methodSymbol.Parameters.Length > 0 && methodSymbol.Parameters[0].Type.SpecialType == SpecialType.System_String)
-                {
-                    var args = invocation.ArgumentList.Arguments;
-                    if (args.Count > 0)
-                    {
-                        var firstArg = args[0].Expression;
-                        if (firstArg is LiteralExpressionSyntax || 
-                            (firstArg is IdentifierNameSyntax && semanticModel.GetTypeInfo(firstArg).Type?.SpecialType == SpecialType.System_String))
-                        {
-                            result = true;
-                        }
-                    }
-                }
-            }
-            // Check if this method wraps a StringPool.Get call
-            else if (methodSymbol.DeclaringSyntaxReferences.Length > 0)
-            {
-                var methodDeclaration = methodSymbol.DeclaringSyntaxReferences[0].GetSyntax() as MethodDeclarationSyntax;
-                if (methodDeclaration != null)
-                {
-                    // Look for any method invocations within this method
-                    var invocations = methodDeclaration.DescendantNodes()
-                        .OfType<InvocationExpressionSyntax>();
-
-                    foreach (var innerInvocation in invocations)
-                    {
-                        // Recursively check each invocation
-                        if (IsStringPoolGetCall(innerInvocation, semanticModel, visitedMethods))
-                        {
-                            Debug.WriteLine($"Found wrapped StringPool.Get call in {methodSymbol.Name}");
-                            result = true;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Cache the result
-            MethodCache.TryAdd(cacheKey, result);
-            Debug.WriteLine($"Cached result for {cacheKey.Item2}.{cacheKey.Item3}: {result}");
-
-            return result;
         }
 
         private Dictionary<string, Location> GetStringLiteralsFromSymbol(ISymbol symbol, SemanticModel semanticModel)
         {
             var literals = new Dictionary<string, Location>();
-            
-            // If it's a parameter, we need to find all the places it's called from
+
+            // If it's a parameter, find all the places it's called from
             if (symbol is IParameterSymbol parameter)
             {
                 var method = parameter.ContainingSymbol as IMethodSymbol;
@@ -406,7 +395,7 @@ namespace RustAnalyzer
                                 {
                                     literals[literal.Token.ValueText] = literal.GetLocation();
                                 }
-                                else 
+                                else
                                 {
                                     // If the argument isn't a literal, analyze its data flow
                                     var argSymbol = semanticModel.GetSymbolInfo(arg).Symbol;
@@ -465,26 +454,19 @@ namespace RustAnalyzer
             MethodDeclarationSyntax method,
             SemanticModel semanticModel)
         {
-            Debug.WriteLine($"Finding callers for method: {method.Identifier}");
             var methodSymbol = semanticModel.GetDeclaredSymbol(method);
             if (methodSymbol == null)
-            {
-                Debug.WriteLine("No method symbol found");
                 return Enumerable.Empty<InvocationExpressionSyntax>();
-            }
 
             var root = method.SyntaxTree.GetRoot();
-            Debug.WriteLine($"Searching in syntax tree with {root.DescendantNodes().Count()} nodes");
 
             return root.DescendantNodes()
                 .OfType<InvocationExpressionSyntax>()
-                .Where(inv => 
+                .Where(invocation =>
                 {
-                    var symbolInfo = semanticModel.GetSymbolInfo(inv);
+                    var symbolInfo = semanticModel.GetSymbolInfo(invocation);
                     var symbol = symbolInfo.Symbol;
-                    var matches = symbol != null && SymbolEqualityComparer.Default.Equals(symbol, methodSymbol);
-                    Debug.WriteLine($"Found invocation at {inv.GetLocation()}, matches: {matches}, symbol: {symbol?.Name ?? "null"}");
-                    return matches;
+                    return symbol != null && SymbolEqualityComparer.Default.Equals(symbol, methodSymbol);
                 });
         }
 
@@ -495,58 +477,38 @@ namespace RustAnalyzer
             MemberAccessExpressionSyntax? rightMember,
             LiteralExpressionSyntax? rightLiteral)
         {
-            Debug.WriteLine("Checking prefab name comparison");
             if ((leftMember == null && rightMember == null) || (leftLiteral == null && rightLiteral == null))
-            {
-                Debug.WriteLine("Not a valid prefab name comparison");
                 return false;
-            }
 
             if ((leftMember != null && rightMember != null) || (leftLiteral != null && rightLiteral != null))
-            {
-                Debug.WriteLine("Not a valid prefab name comparison");
                 return false;
-            }
 
             var memberAccess = leftMember ?? rightMember;
-            
+
             if (memberAccess == null)
-            {
-                Debug.WriteLine("Missing member access");
                 return false;
-            }
 
             var propertyName = memberAccess.Name.Identifier.Text;
-            
+
             if (!(propertyName == "PrefabName" || propertyName == "ShortPrefabName"))
-            {
-                Debug.WriteLine("Not a prefab name property");
                 return false;
-            }
 
             var typeInfo = context.SemanticModel.GetTypeInfo(memberAccess.Expression);
             var objectType = typeInfo.Type;
             if (objectType == null)
-            {
-                Debug.WriteLine("No object type found");
                 return false;
-            }
 
             var currentType = objectType;
             while (currentType != null)
             {
                 var currentTypeName = currentType.ToDisplayString();
-                
+
                 if (PossibleBaseNetworkableNames.Contains(currentTypeName))
-                {
-                    Debug.WriteLine("Found base networkable type");
                     return true;
-                }
-                    
+
                 currentType = currentType.BaseType;
             }
 
-            Debug.WriteLine("No base networkable type found");
             return false;
         }
 
