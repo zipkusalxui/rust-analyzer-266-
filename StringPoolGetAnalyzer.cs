@@ -13,7 +13,7 @@ using System.Linq;
 namespace RustAnalyzer
 {
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
-    public class BaseNetworkableAnalyzer : DiagnosticAnalyzer
+    public class StringPoolGetAnalyzer : DiagnosticAnalyzer
     {
         public const string DiagnosticId = "RUST0005";
 
