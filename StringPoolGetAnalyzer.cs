@@ -3,15 +3,18 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
 
 namespace RustAnalyzer
 {
+    /// <summary>
+    /// Analyzer to detect invalid prefab names used with BaseNetworkable properties or methods that eventually call StringPool.Get().
+    /// </summary>
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
     public class StringPoolGetAnalyzer : DiagnosticAnalyzer
     {
@@ -25,7 +28,7 @@ namespace RustAnalyzer
 
         private static readonly string Title = "Invalid prefab name";
         private static readonly string MessageFormat = "String '{0}' does not exist in StringPool{1}";
-        private static readonly string Description = "Prefab names must exist in StringPool when used with BaseNetworkable properties or StringPool.Get() method. This ensures runtime safety and prevents potential errors.";
+        private static readonly string Description = "Prefab names must exist in StringPool when used with BaseNetworkable properties or methods that eventually call StringPool.Get(). This ensures runtime safety and prevents potential errors.";
 
         private const string Category = "Correctness";
 
@@ -45,315 +48,332 @@ namespace RustAnalyzer
             Debug.WriteLine("Initializing analyzer");
             context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
             context.EnableConcurrentExecution();
-            context.RegisterCompilationStartAction(InitializeCacheAndRegisterActions);
+            context.RegisterCompilationStartAction(InitializePerCompilation);
         }
 
-        private void InitializeCacheAndRegisterActions(CompilationStartAnalysisContext context)
+        private void InitializePerCompilation(CompilationStartAnalysisContext context)
         {
-            // Initialize caches
-            InitializeMethodCache(context.Compilation);
+            // Create a new instance of the analyzer for this compilation
+            var compilationAnalyzer = new CompilationAnalyzer(context.Compilation);
 
-            context.RegisterSyntaxNodeAction(AnalyzeBinaryExpression, SyntaxKind.EqualsExpression);
-            context.RegisterSyntaxNodeAction(AnalyzeInvocationExpression, SyntaxKind.InvocationExpression);
+            // Register syntax node actions
+            context.RegisterSyntaxNodeAction(compilationAnalyzer.AnalyzeBinaryExpression, SyntaxKind.EqualsExpression);
+            context.RegisterSyntaxNodeAction(compilationAnalyzer.AnalyzeInvocationExpression, SyntaxKind.InvocationExpression);
         }
 
-        // Cache for fast prefab lookup
-        private static readonly HashSet<string> PrefabPaths = new HashSet<string>(
-            StringPool.toNumber.Keys
-                .Where(p => p.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
-                .Select(p => p.ToLowerInvariant())
-        );
-
-        private static readonly ConcurrentDictionary<string, bool> PrefabPathCache
-            = new ConcurrentDictionary<string, bool>();
-        private static readonly ConcurrentDictionary<string, List<string>> PrefixCache
-            = new ConcurrentDictionary<string, List<string>>();
-
-        // Cache for methods that use StringPool.Get
-        private static readonly ConcurrentDictionary<(string TypeName, string MethodName), MethodConfig> MethodCache
-            = new ConcurrentDictionary<(string, string), MethodConfig>();
-
-        private class MethodConfig
+        /// <summary>
+        /// Analyzer instance for a specific compilation.
+        /// </summary>
+        private class CompilationAnalyzer
         {
-            public string TypeName { get; }
-            public string MethodName { get; }
-            public List<int> ParameterIndices { get; }
+            private readonly Compilation _compilation;
+            private readonly Dictionary<(string TypeName, string MethodName), MethodConfig> _methodCache;
+            private readonly Dictionary<IMethodSymbol, bool> _methodCallCache;
+            private readonly HashSet<string> _validPrefabPaths;
 
-            public MethodConfig(string typeName, string methodName, List<int> parameterIndices)
+            private class MethodConfig
             {
-                TypeName = typeName;
-                MethodName = methodName;
-                ParameterIndices = parameterIndices;
-            }
-        }
+                public string TypeName { get; }
+                public string MethodName { get; }
+                public List<int> ParameterIndices { get; }
 
-        static StringPoolGetAnalyzer()
-        {
-            // Initialize prefix cache
-            foreach (var path in PrefabPaths)
-            {
-                var prefix = path.Length >= 3 ? path.Substring(0, 3) : path;
-                PrefixCache.AddOrUpdate(
-                    prefix,
-                    key => new List<string> { path },
-                    (key, list) => { list.Add(path); return list; }
-                );
-            }
-        }
-
-        private void InitializeMethodCache(Compilation compilation)
-        {
-            // Pre-populate MethodCache with known methods
-            var knownMethods = new List<MethodConfig>
-            {
-                new MethodConfig("GameManager", "CreateEntity", new List<int> { 0 }),
-                new MethodConfig("BaseEntity", "Spawn", new List<int>()),
-                new MethodConfig("PrefabAttribute", "server", new List<int>()),
-                new MethodConfig("PrefabAttribute", "client", new List<int>()),
-                new MethodConfig("GameManifest", "PathToStringID", new List<int> { 0 }),
-                new MethodConfig("StringPool", "Add", new List<int> { 0 }),
-                new MethodConfig("GameManager", "FindPrefab", new List<int> { 0 }),
-                new MethodConfig("ItemManager", "CreateByName", new List<int> { 0 }),
-                new MethodConfig("ItemManager", "FindItemDefinition", new List<int> { 0 }),
-                new MethodConfig("GameManager", "LoadPrefab", new List<int> { 0 }),
-                new MethodConfig("PrefabAttribute", "Find", new List<int> { 0 }),
-                new MethodConfig("StringPool", "Get", new List<int> { 0 }),
-            };
-
-            foreach (var methodConfig in knownMethods)
-            {
-                MethodCache.TryAdd((methodConfig.TypeName, methodConfig.MethodName), methodConfig);
-            }
-
-            // Analyze the compilation to find methods that call StringPool.Get
-            var stringPoolType = compilation.GetTypeByMetadataName("StringPool");
-            if (stringPoolType != null)
-            {
-                var methodsUsingStringPoolGet = new HashSet<IMethodSymbol>();
-                foreach (var tree in compilation.SyntaxTrees)
+                public MethodConfig(string typeName, string methodName, List<int> parameterIndices)
                 {
-                    var semanticModel = compilation.GetSemanticModel(tree);
-                    var invocations = tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>();
-                    foreach (var invocation in invocations)
-                    {
-                        var methodSymbol = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
-                        if (methodSymbol == null) continue;
+                    TypeName = typeName;
+                    MethodName = methodName;
+                    ParameterIndices = parameterIndices;
+                }
+            }
 
-                        if (IsStringPoolGetMethod(methodSymbol))
+            public CompilationAnalyzer(Compilation compilation)
+            {
+                _compilation = compilation;
+                _methodCache = new Dictionary<(string, string), MethodConfig>();
+                _methodCallCache = new Dictionary<IMethodSymbol, bool>(SymbolEqualityComparer.Default);
+                _validPrefabPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                InitializePrefabPaths();
+                InitializeMethodCache();
+            }
+
+            /// <summary>
+            /// Initializes the set of valid prefab paths by analyzing StringPool.toNumber.
+            /// </summary>
+            private void InitializePrefabPaths()
+            {
+                // Assuming StringPool.toNumber is accessible and contains the keys
+                var stringPoolType = _compilation.GetTypeByMetadataName("StringPool");
+                if (stringPoolType == null)
+                    return;
+
+                var toNumberField = stringPoolType.GetMembers()
+                    .FirstOrDefault(m => m.Kind == SymbolKind.Field && m.Name == "toNumber") as IFieldSymbol;
+
+                if (toNumberField == null)
+                    return;
+
+                foreach (var syntaxRef in toNumberField.DeclaringSyntaxReferences)
+                {
+                    var syntax = syntaxRef.GetSyntax() as VariableDeclaratorSyntax;
+                    if (syntax?.Initializer?.Value is ObjectCreationExpressionSyntax objCreation && objCreation.Initializer != null)
+                    {
+                        foreach (var expression in objCreation.Initializer.Expressions)
                         {
-                            var containingMethod = methodSymbol.ContainingSymbol as IMethodSymbol;
-                            if (containingMethod != null)
+                            if (expression is AssignmentExpressionSyntax assignExpr &&
+                                assignExpr.Left is LiteralExpressionSyntax literal)
                             {
-                                var key = (containingMethod.ContainingType.Name, containingMethod.Name);
-                                if (!MethodCache.ContainsKey(key))
-                                {
-                                    MethodCache.TryAdd(key, new MethodConfig(containingMethod.ContainingType.Name, containingMethod.Name, new List<int>()));
-                                }
+                                var key = literal.Token.ValueText.ToLowerInvariant();
+                                _validPrefabPaths.Add(key);
                             }
                         }
                     }
                 }
             }
-        }
 
-        private bool IsStringPoolGetMethod(IMethodSymbol methodSymbol)
-        {
-            return methodSymbol.IsStatic &&
-                   methodSymbol.Name == "Get" &&
-                   methodSymbol.ContainingType.Name == "StringPool";
-        }
-
-        private bool IsValidPrefabPath(string path)
-        {
-            if (string.IsNullOrWhiteSpace(path))
-                return false;
-
-            return PrefabPathCache.GetOrAdd(path, p =>
+            private void InitializeMethodCache()
             {
-                p = p.ToLowerInvariant().Replace("\\", "/").Trim();
-                return PrefabPaths.Contains(p);
-            });
-        }
-
-        private string GetSuggestionMessage(string invalidPath)
-        {
-            invalidPath = invalidPath.ToLowerInvariant().Replace("\\", "/").Trim();
-            var prefix = invalidPath.Length >= 3 ? invalidPath.Substring(0, 3) : invalidPath;
-
-            var candidates = PrefixCache.GetOrAdd(prefix, key => new List<string>());
-            if (!candidates.Any())
-                candidates = PrefabPaths.ToList();
-
-            var suggestions = candidates
-                .Select(p => new { Path = p, Distance = StringDistance.GetLevenshteinDistance(p, invalidPath) })
-                .Where(x => x.Distance <= 5)
-                .OrderBy(x => x.Distance)
-                .Take(3)
-                .Select(x => x.Path)
-                .ToList();
-
-            if (suggestions.Any())
-            {
-                return $" Invalid prefab path. Did you mean one of these?\n" +
-                       string.Join("\n", suggestions.Select(s => $"  - {s}"));
-            }
-
-            return " Invalid prefab path. Make sure it starts with 'assets/prefabs/' and ends with '.prefab'";
-        }
-
-        private void AnalyzeBinaryExpression(SyntaxNodeAnalysisContext context)
-        {
-            Debug.WriteLine("Analyzing binary expression");
-            var binaryExpression = (BinaryExpressionSyntax)context.Node;
-
-            var leftMemberAccess = binaryExpression.Left as MemberAccessExpressionSyntax;
-            var rightMemberAccess = binaryExpression.Right as MemberAccessExpressionSyntax;
-
-            var leftLiteral = binaryExpression.Left as LiteralExpressionSyntax;
-            var rightLiteral = binaryExpression.Right as LiteralExpressionSyntax;
-
-            if (!IsValidPrefabNameComparison(context, leftMemberAccess, leftLiteral, rightMemberAccess, rightLiteral))
-            {
-                Debug.WriteLine("Not a valid prefab name comparison");
-                return;
-            }
-
-            var literalExpression = leftLiteral ?? rightLiteral;
-            var memberAccess = leftMemberAccess ?? rightMemberAccess;
-
-            if (literalExpression == null || memberAccess == null)
-            {
-                Debug.WriteLine("Missing literal or member access");
-                return;
-            }
-
-            var stringValue = literalExpression.Token.ValueText;
-            bool isShortPrefabName = memberAccess.Name.Identifier.Text == "ShortPrefabName";
-
-            if (isShortPrefabName)
-            {
-                bool foundMatch = false;
-                if (StringPool.toNumber != null)
+                // Pre-populate MethodCache with known methods
+                var knownMethods = new List<MethodConfig>
                 {
-                    foreach (var prefabName in StringPool.toNumber.Keys)
+                    new MethodConfig("GameManager", "CreateEntity", new List<int> { 0 }),
+                    new MethodConfig("BaseEntity", "Spawn", new List<int>()),
+                    new MethodConfig("PrefabAttribute", "server", new List<int>()),
+                    new MethodConfig("PrefabAttribute", "client", new List<int>()),
+                    new MethodConfig("GameManifest", "PathToStringID", new List<int> { 0 }),
+                    new MethodConfig("StringPool", "Add", new List<int> { 0 }),
+                    new MethodConfig("GameManager", "FindPrefab", new List<int> { 0 }),
+                    new MethodConfig("ItemManager", "CreateByName", new List<int> { 0 }),
+                    new MethodConfig("ItemManager", "FindItemDefinition", new List<int> { 0 }),
+                    new MethodConfig("GameManager", "LoadPrefab", new List<int> { 0 }),
+                    new MethodConfig("PrefabAttribute", "Find", new List<int> { 0 }),
+                    new MethodConfig("StringPool", "Get", new List<int> { 0 }),
+                };
+
+                foreach (var methodConfig in knownMethods)
+                {
+                    var key = (methodConfig.TypeName, methodConfig.MethodName);
+                    _methodCache[key] = methodConfig;
+                }
+
+                // Analyze the compilation to find methods that call methods in MethodCache
+                foreach (var tree in _compilation.SyntaxTrees)
+                {
+                    var semanticModel = _compilation.GetSemanticModel(tree);
+                    var root = tree.GetRoot();
+
+                    var methodDeclarations = root.DescendantNodes()
+                        .OfType<MethodDeclarationSyntax>();
+
+                    foreach (var methodDeclaration in methodDeclarations)
+                    {
+                        var methodSymbol = semanticModel.GetDeclaredSymbol(methodDeclaration);
+                        if (methodSymbol == null)
+                            continue;
+
+                        // Skip methods that are already in the cache
+                        var methodKey = (methodSymbol.ContainingType.Name, methodSymbol.Name);
+                        if (_methodCache.ContainsKey(methodKey))
+                            continue;
+
+                        // Check if this method calls any methods in MethodCache
+                        if (MethodCallsKnownMethod(methodSymbol))
+                        {
+                            // For simplicity, analyze all parameters
+                            var parameterIndices = Enumerable.Range(0, methodSymbol.Parameters.Length).ToList();
+                            var methodConfig = new MethodConfig(methodSymbol.ContainingType.Name, methodSymbol.Name, parameterIndices);
+
+                            _methodCache[methodKey] = methodConfig;
+                        }
+                    }
+                }
+            }
+
+            private bool MethodCallsKnownMethod(IMethodSymbol methodSymbol)
+            {
+                if (_methodCallCache.TryGetValue(methodSymbol, out bool result))
+                {
+                    return result;
+                }
+
+                // Prevent recursion
+                _methodCallCache[methodSymbol] = false;
+
+                foreach (var syntaxRef in methodSymbol.DeclaringSyntaxReferences)
+                {
+                    var methodDeclaration = syntaxRef.GetSyntax() as MethodDeclarationSyntax;
+                    if (methodDeclaration == null)
+                        continue;
+
+                    var semanticModel = _compilation.GetSemanticModel(methodDeclaration.SyntaxTree);
+
+                    var invocations = methodDeclaration.DescendantNodes()
+                        .OfType<InvocationExpressionSyntax>();
+
+                    foreach (var invocation in invocations)
+                    {
+                        var invokedMethodSymbol = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+                        if (invokedMethodSymbol == null)
+                            continue;
+
+                        // Check if the invoked method is in MethodCache
+                        var invokedMethodKey = (invokedMethodSymbol.ContainingType.Name, invokedMethodSymbol.Name);
+                        if (_methodCache.ContainsKey(invokedMethodKey))
+                        {
+                            _methodCallCache[methodSymbol] = true;
+                            return true;
+                        }
+
+                        // Recursively check if the invoked method calls a known method
+                        if (invokedMethodSymbol.MethodKind == MethodKind.Ordinary && !invokedMethodSymbol.Equals(methodSymbol))
+                        {
+                            if (MethodCallsKnownMethod(invokedMethodSymbol))
+                            {
+                                _methodCallCache[methodSymbol] = true;
+                                return true;
+                            }
+                        }
+                    }
+                }
+
+                _methodCallCache[methodSymbol] = false;
+                return false;
+            }
+
+            public void AnalyzeBinaryExpression(SyntaxNodeAnalysisContext context)
+            {
+                Debug.WriteLine("Analyzing binary expression");
+                var binaryExpression = (BinaryExpressionSyntax)context.Node;
+
+                var leftMemberAccess = binaryExpression.Left as MemberAccessExpressionSyntax;
+                var rightMemberAccess = binaryExpression.Right as MemberAccessExpressionSyntax;
+
+                var leftLiteral = binaryExpression.Left as LiteralExpressionSyntax;
+                var rightLiteral = binaryExpression.Right as LiteralExpressionSyntax;
+
+                if (!IsValidPrefabNameComparison(context, leftMemberAccess, leftLiteral, rightMemberAccess, rightLiteral))
+                {
+                    Debug.WriteLine("Not a valid prefab name comparison");
+                    return;
+                }
+
+                var literalExpression = leftLiteral ?? rightLiteral;
+                var memberAccess = leftMemberAccess ?? rightMemberAccess;
+
+                if (literalExpression == null || memberAccess == null)
+                {
+                    Debug.WriteLine("Missing literal or member access");
+                    return;
+                }
+
+                var stringValue = literalExpression.Token.ValueText;
+                bool isShortPrefabName = memberAccess.Name.Identifier.Text == "ShortPrefabName";
+
+                if (isShortPrefabName)
+                {
+                    bool foundMatch = false;
+                    foreach (var prefabName in _validPrefabPaths)
                     {
                         var shortName = Path.GetFileNameWithoutExtension(prefabName);
-                        if (shortName == stringValue)
+                        if (shortName.Equals(stringValue, StringComparison.OrdinalIgnoreCase))
                         {
                             foundMatch = true;
                             break;
                         }
                     }
-                }
 
-                if (!foundMatch)
-                {
-                    var suggestions = StringPool.toNumber != null
-                        ? StringDistance.FindSimilarShortNames(stringValue, StringPool.toNumber.Keys)
-                        : Enumerable.Empty<string>();
-
-                    string suggestionMessage = suggestions.Any()
-                        ? $" Did you mean one of these: {string.Join(", ", suggestions)}?"
-                        : " Make sure to use a valid prefab short name";
-
-                    Debug.WriteLine($"Creating diagnostic for {stringValue}");
-                    var diagnostic = Diagnostic.Create(
-                        Rule,
-                        literalExpression.GetLocation(),
-                        stringValue,
-                        suggestionMessage);
-                    context.ReportDiagnostic(diagnostic);
-                    Debug.WriteLine("Diagnostic reported");
-                }
-            }
-            else
-            {
-                if (StringPool.toNumber == null || !StringPool.toNumber.ContainsKey(stringValue))
-                {
-                    var suggestions = StringPool.toNumber != null
-                        ? StringDistance.FindSimilarPrefabs(stringValue, StringPool.toNumber.Keys)
-                        : Enumerable.Empty<string>();
-
-                    string suggestionMessage = suggestions.Any()
-                        ? $" Did you mean one of these: {string.Join(", ", suggestions)}?"
-                        : " Make sure to use a valid prefab path";
-
-                    Debug.WriteLine($"Creating diagnostic for {stringValue}");
-                    var diagnostic = Diagnostic.Create(
-                        Rule,
-                        literalExpression.GetLocation(),
-                        stringValue,
-                        suggestionMessage);
-                    context.ReportDiagnostic(diagnostic);
-                    Debug.WriteLine("Diagnostic reported");
-                }
-            }
-        }
-
-        private void AnalyzeInvocationExpression(SyntaxNodeAnalysisContext context)
-        {
-            var invocation = (InvocationExpressionSyntax)context.Node;
-            Debug.WriteLine($"Analyzing invocation at {invocation.GetLocation()}");
-
-            var semanticModel = context.SemanticModel;
-            var methodSymbol = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
-            if (methodSymbol == null)
-                return;
-
-            var methodConfig = GetMethodConfig(methodSymbol);
-            if (methodConfig == null)
-                return;
-
-            var arguments = invocation.ArgumentList.Arguments;
-            foreach (var index in methodConfig.ParameterIndices)
-            {
-                if (arguments.Count > index)
-                {
-                    var argument = arguments[index].Expression;
-                    AnalyzeArgumentForPrefabPath(context, argument);
-                }
-            }
-        }
-
-        private MethodConfig? GetMethodConfig(IMethodSymbol methodSymbol)
-        {
-            var key = (methodSymbol.ContainingType.Name, methodSymbol.Name);
-
-            if (MethodCache.TryGetValue(key, out var methodConfig))
-            {
-                return methodConfig;
-            }
-
-            // Optionally, you can add code here to analyze unknown methods and add them to the cache
-            return null;
-        }
-
-        private void AnalyzeArgumentForPrefabPath(SyntaxNodeAnalysisContext context, ExpressionSyntax argument)
-        {
-            var semanticModel = context.SemanticModel;
-
-            if (argument is LiteralExpressionSyntax literal)
-            {
-                var stringValue = literal.Token.ValueText;
-                if (!IsValidPrefabPath(stringValue))
-                {
-                    ReportDiagnostic(
-                        context,
-                        literal.GetLocation(),
-                        stringValue,
-                        GetSuggestionMessage(stringValue)
-                    );
-                }
-            }
-            else
-            {
-                var dataFlow = semanticModel.AnalyzeDataFlow(argument);
-                if (dataFlow?.DataFlowsIn != null)
-                {
-                    foreach (var symbol in dataFlow.DataFlowsIn)
+                    if (!foundMatch)
                     {
-                        if (symbol == null) continue;
+                        var suggestions = FindSimilarShortNames(stringValue);
 
+                        string suggestionMessage = suggestions.Any()
+                            ? $" Did you mean one of these: {string.Join(", ", suggestions)}?"
+                            : " Make sure to use a valid prefab short name";
+
+                        Debug.WriteLine($"Creating diagnostic for {stringValue}");
+                        var diagnostic = Diagnostic.Create(
+                            Rule,
+                            literalExpression.GetLocation(),
+                            stringValue,
+                            suggestionMessage);
+                        context.ReportDiagnostic(diagnostic);
+                        Debug.WriteLine("Diagnostic reported");
+                    }
+                }
+                else
+                {
+                    if (!IsValidPrefabPath(stringValue))
+                    {
+                        var suggestions = FindSimilarPrefabs(stringValue);
+
+                        string suggestionMessage = suggestions.Any()
+                            ? $" Did you mean one of these: {string.Join(", ", suggestions)}?"
+                            : " Make sure to use a valid prefab path";
+
+                        Debug.WriteLine($"Creating diagnostic for {stringValue}");
+                        var diagnostic = Diagnostic.Create(
+                            Rule,
+                            literalExpression.GetLocation(),
+                            stringValue,
+                            suggestionMessage);
+                        context.ReportDiagnostic(diagnostic);
+                        Debug.WriteLine("Diagnostic reported");
+                    }
+                }
+            }
+
+            public void AnalyzeInvocationExpression(SyntaxNodeAnalysisContext context)
+            {
+                var invocation = (InvocationExpressionSyntax)context.Node;
+                Debug.WriteLine($"Analyzing invocation at {invocation.GetLocation()}");
+
+                // Skip generated code
+                if (IsGeneratedCode(invocation.SyntaxTree, context.CancellationToken))
+                    return;
+
+                var semanticModel = context.SemanticModel;
+                var methodSymbol = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+                if (methodSymbol == null)
+                    return;
+
+                var methodKey = (methodSymbol.ContainingType.Name, methodSymbol.Name);
+
+                // Check if the method is in MethodCache
+                if (!_methodCache.TryGetValue(methodKey, out var methodConfig))
+                    return;
+
+                var arguments = invocation.ArgumentList.Arguments;
+                foreach (var index in methodConfig.ParameterIndices)
+                {
+                    if (arguments.Count > index)
+                    {
+                        var argument = arguments[index].Expression;
+                        AnalyzeArgumentForPrefabPath(context, argument);
+                    }
+                }
+            }
+
+            private void AnalyzeArgumentForPrefabPath(SyntaxNodeAnalysisContext context, ExpressionSyntax argument)
+            {
+                var semanticModel = context.SemanticModel;
+
+                if (argument is LiteralExpressionSyntax literal)
+                {
+                    var stringValue = literal.Token.ValueText;
+                    if (!IsValidPrefabPath(stringValue))
+                    {
+                        ReportDiagnostic(
+                            context,
+                            literal.GetLocation(),
+                            stringValue,
+                            GetSuggestionMessage(stringValue)
+                        );
+                    }
+                }
+                else
+                {
+                    var symbol = semanticModel.GetSymbolInfo(argument).Symbol;
+                    if (symbol != null)
+                    {
                         var literals = GetStringLiteralsFromSymbol(symbol, semanticModel);
                         foreach (var kvp in literals)
                         {
@@ -370,42 +390,88 @@ namespace RustAnalyzer
                     }
                 }
             }
-        }
 
-        private Dictionary<string, Location> GetStringLiteralsFromSymbol(ISymbol symbol, SemanticModel semanticModel)
-        {
-            var literals = new Dictionary<string, Location>();
-
-            // If it's a parameter, find all the places it's called from
-            if (symbol is IParameterSymbol parameter)
+            private bool IsValidPrefabPath(string path)
             {
-                var method = parameter.ContainingSymbol as IMethodSymbol;
-                if (method != null)
+                if (string.IsNullOrWhiteSpace(path))
+                    return false;
+
+                path = path.ToLowerInvariant().Replace("\\", "/").Trim();
+                return _validPrefabPaths.Contains(path);
+            }
+
+            private string GetSuggestionMessage(string invalidPath)
+            {
+                var suggestions = FindSimilarPrefabs(invalidPath);
+
+                if (suggestions.Any())
                 {
-                    // Find all references to this method
-                    var methodSyntax = method.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() as MethodDeclarationSyntax;
-                    if (methodSyntax != null)
+                    return $" Invalid prefab path. Did you mean one of these?\n" +
+                           string.Join("\n", suggestions.Select(s => $"  - {s}"));
+                }
+
+                return " Invalid prefab path. Make sure it starts with 'assets/prefabs/' and ends with '.prefab'";
+            }
+
+            private IEnumerable<string> FindSimilarPrefabs(string invalidPath)
+            {
+                invalidPath = invalidPath.ToLowerInvariant().Replace("\\", "/").Trim();
+
+                return _validPrefabPaths
+                    .Select(p => new { Path = p, Distance = GetLevenshteinDistance(p, invalidPath) })
+                    .Where(x => x.Distance <= 5)
+                    .OrderBy(x => x.Distance)
+                    .Take(3)
+                    .Select(x => x.Path);
+            }
+
+            private IEnumerable<string> FindSimilarShortNames(string shortName)
+            {
+                shortName = shortName.ToLowerInvariant();
+
+                return _validPrefabPaths
+                    .Select(p => Path.GetFileNameWithoutExtension(p))
+                    .Distinct()
+                    .Select(sn => new { ShortName = sn, Distance = GetLevenshteinDistance(sn, shortName) })
+                    .Where(x => x.Distance <= 3)
+                    .OrderBy(x => x.Distance)
+                    .Take(3)
+                    .Select(x => x.ShortName);
+            }
+
+            private Dictionary<string, Location> GetStringLiteralsFromSymbol(ISymbol symbol, SemanticModel semanticModel)
+            {
+                var literals = new Dictionary<string, Location>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var syntaxRef in symbol.DeclaringSyntaxReferences)
+                {
+                    var node = syntaxRef.GetSyntax();
+                    if (node is VariableDeclaratorSyntax variableDeclarator && variableDeclarator.Initializer != null)
                     {
-                        var callers = FindMethodCallers(methodSyntax, semanticModel);
-                        foreach (var caller in callers)
+                        var value = variableDeclarator.Initializer.Value;
+                        if (value is LiteralExpressionSyntax literal)
                         {
-                            if (caller.ArgumentList.Arguments.Count > parameter.Ordinal)
+                            literals[literal.Token.ValueText] = literal.GetLocation();
+                        }
+                    }
+                    else if (node is ParameterSyntax parameterSyntax)
+                    {
+                        // For parameters, find where the method is called
+                        var parameterSymbol = semanticModel.GetDeclaredSymbol(parameterSyntax) as IParameterSymbol;
+                        if (parameterSymbol != null)
+                        {
+                            var methodSymbol = parameterSymbol.ContainingSymbol as IMethodSymbol;
+                            if (methodSymbol != null)
                             {
-                                var arg = caller.ArgumentList.Arguments[parameter.Ordinal].Expression;
-                                if (arg is LiteralExpressionSyntax literal)
+                                var callers = FindMethodCallers(methodSymbol, semanticModel.Compilation);
+                                foreach (var caller in callers)
                                 {
-                                    literals[literal.Token.ValueText] = literal.GetLocation();
-                                }
-                                else
-                                {
-                                    // If the argument isn't a literal, analyze its data flow
-                                    var argSymbol = semanticModel.GetSymbolInfo(arg).Symbol;
-                                    if (argSymbol != null)
+                                    if (caller.ArgumentList.Arguments.Count > parameterSymbol.Ordinal)
                                     {
-                                        var argLiterals = GetStringLiteralsFromSymbol(argSymbol, semanticModel);
-                                        foreach (var kvp in argLiterals)
+                                        var arg = caller.ArgumentList.Arguments[parameterSymbol.Ordinal].Expression;
+                                        if (arg is LiteralExpressionSyntax argLiteral)
                                         {
-                                            literals[kvp.Key] = kvp.Value;
+                                            literals[argLiteral.Token.ValueText] = argLiteral.GetLocation();
                                         }
                                     }
                                 }
@@ -413,115 +479,139 @@ namespace RustAnalyzer
                         }
                     }
                 }
-            }
-            // For variables, look for assignments
-            else
-            {
-                foreach (var reference in symbol.DeclaringSyntaxReferences)
-                {
-                    var node = reference.GetSyntax();
-                    var assignments = node.Ancestors()
-                        .OfType<AssignmentExpressionSyntax>()
-                        .Where(a => semanticModel.GetSymbolInfo(a.Left).Symbol?.Equals(symbol, SymbolEqualityComparer.Default) == true)
-                        .ToList();
 
-                    foreach (var assignment in assignments)
+                return literals;
+            }
+
+            private IEnumerable<InvocationExpressionSyntax> FindMethodCallers(
+                IMethodSymbol methodSymbol,
+                Compilation compilation)
+            {
+                var callers = new List<InvocationExpressionSyntax>();
+
+                foreach (var tree in compilation.SyntaxTrees)
+                {
+                    var semanticModel = compilation.GetSemanticModel(tree);
+                    var root = tree.GetRoot();
+
+                    var invocations = root.DescendantNodes()
+                        .OfType<InvocationExpressionSyntax>()
+                        .Where(invocation =>
+                        {
+                            var symbolInfo = semanticModel.GetSymbolInfo(invocation);
+                            var symbol = symbolInfo.Symbol;
+                            return symbol != null && SymbolEqualityComparer.Default.Equals(symbol, methodSymbol);
+                        });
+
+                    callers.AddRange(invocations);
+                }
+
+                return callers;
+            }
+
+            private bool IsValidPrefabNameComparison(
+                SyntaxNodeAnalysisContext context,
+                MemberAccessExpressionSyntax? leftMember,
+                LiteralExpressionSyntax? leftLiteral,
+                MemberAccessExpressionSyntax? rightMember,
+                LiteralExpressionSyntax? rightLiteral)
+            {
+                if ((leftMember == null && rightMember == null) || (leftLiteral == null && rightLiteral == null))
+                    return false;
+
+                if ((leftMember != null && rightMember != null) || (leftLiteral != null && rightLiteral != null))
+                    return false;
+
+                var memberAccess = leftMember ?? rightMember;
+
+                if (memberAccess == null)
+                    return false;
+
+                var propertyName = memberAccess.Name.Identifier.Text;
+
+                if (!(propertyName == "PrefabName" || propertyName == "ShortPrefabName"))
+                    return false;
+
+                var typeInfo = context.SemanticModel.GetTypeInfo(memberAccess.Expression);
+                var objectType = typeInfo.Type;
+                if (objectType == null)
+                    return false;
+
+                var currentType = objectType;
+                while (currentType != null)
+                {
+                    var currentTypeName = currentType.ToDisplayString();
+
+                    if (PossibleBaseNetworkableNames.Contains(currentTypeName))
+                        return true;
+
+                    currentType = currentType.BaseType;
+                }
+
+                return false;
+            }
+
+            private void ReportDiagnostic(SyntaxNodeAnalysisContext context, Location location, string message, string suggestion)
+            {
+                var diagnostic = Diagnostic.Create(
+                    Rule,
+                    location,
+                    message,
+                    suggestion);
+
+                context.ReportDiagnostic(diagnostic);
+            }
+
+            private bool IsGeneratedCode(SyntaxTree tree, CancellationToken cancellationToken)
+            {
+                if (tree == null)
+                    throw new ArgumentNullException(nameof(tree));
+
+                var root = tree.GetRoot(cancellationToken);
+                foreach (var trivia in root.GetLeadingTrivia())
+                {
+                    if (trivia.IsKind(SyntaxKind.SingleLineCommentTrivia) ||
+                        trivia.IsKind(SyntaxKind.MultiLineCommentTrivia))
                     {
-                        if (assignment.Right is LiteralExpressionSyntax literal)
-                        {
-                            literals[literal.Token.ValueText] = literal.GetLocation();
-                        }
-                        else
-                        {
-                            // If assigned from another variable, analyze its data flow
-                            var rightSymbol = semanticModel.GetSymbolInfo(assignment.Right).Symbol;
-                            if (rightSymbol != null)
-                            {
-                                var rightLiterals = GetStringLiteralsFromSymbol(rightSymbol, semanticModel);
-                                foreach (var kvp in rightLiterals)
-                                {
-                                    literals[kvp.Key] = kvp.Value;
-                                }
-                            }
-                        }
+                        var text = trivia.ToFullString();
+                        if (text.Contains("<auto-generated"))
+                            return true;
                     }
                 }
+                return false;
             }
 
-            return literals;
-        }
-
-        private static IEnumerable<InvocationExpressionSyntax> FindMethodCallers(
-            MethodDeclarationSyntax method,
-            SemanticModel semanticModel)
-        {
-            var methodSymbol = semanticModel.GetDeclaredSymbol(method);
-            if (methodSymbol == null)
-                return Enumerable.Empty<InvocationExpressionSyntax>();
-
-            var root = method.SyntaxTree.GetRoot();
-
-            return root.DescendantNodes()
-                .OfType<InvocationExpressionSyntax>()
-                .Where(invocation =>
-                {
-                    var symbolInfo = semanticModel.GetSymbolInfo(invocation);
-                    var symbol = symbolInfo.Symbol;
-                    return symbol != null && SymbolEqualityComparer.Default.Equals(symbol, methodSymbol);
-                });
-        }
-
-        private bool IsValidPrefabNameComparison(
-            SyntaxNodeAnalysisContext context,
-            MemberAccessExpressionSyntax? leftMember,
-            LiteralExpressionSyntax? leftLiteral,
-            MemberAccessExpressionSyntax? rightMember,
-            LiteralExpressionSyntax? rightLiteral)
-        {
-            if ((leftMember == null && rightMember == null) || (leftLiteral == null && rightLiteral == null))
-                return false;
-
-            if ((leftMember != null && rightMember != null) || (leftLiteral != null && rightLiteral != null))
-                return false;
-
-            var memberAccess = leftMember ?? rightMember;
-
-            if (memberAccess == null)
-                return false;
-
-            var propertyName = memberAccess.Name.Identifier.Text;
-
-            if (!(propertyName == "PrefabName" || propertyName == "ShortPrefabName"))
-                return false;
-
-            var typeInfo = context.SemanticModel.GetTypeInfo(memberAccess.Expression);
-            var objectType = typeInfo.Type;
-            if (objectType == null)
-                return false;
-
-            var currentType = objectType;
-            while (currentType != null)
+            // Helper method to compute Levenshtein distance
+            private int GetLevenshteinDistance(string s, string t)
             {
-                var currentTypeName = currentType.ToDisplayString();
+                if (string.IsNullOrEmpty(s))
+                    return t.Length;
+                if (string.IsNullOrEmpty(t))
+                    return s.Length;
 
-                if (PossibleBaseNetworkableNames.Contains(currentTypeName))
-                    return true;
+                int[,] d = new int[s.Length + 1, t.Length + 1];
 
-                currentType = currentType.BaseType;
+                for (int i = 0; i <= s.Length; i++)
+                    d[i, 0] = i;
+                for (int j = 0; j <= t.Length; j++)
+                    d[0, j] = j;
+
+                for (int i = 1; i <= s.Length; i++)
+                {
+                    for (int j = 1; j <= t.Length; j++)
+                    {
+                        int cost = s[i - 1] == t[j - 1] ? 0 : 1;
+
+                        d[i, j] = Math.Min(
+                            Math.Min(
+                                d[i - 1, j] + 1,    // Deletion
+                                d[i, j - 1] + 1),   // Insertion
+                            d[i - 1, j - 1] + cost); // Substitution
+                    }
+                }
+
+                return d[s.Length, t.Length];
             }
-
-            return false;
-        }
-
-        private void ReportDiagnostic(SyntaxNodeAnalysisContext context, Location location, string message, string suggestion)
-        {
-            var diagnostic = Diagnostic.Create(
-                Rule,
-                location,
-                message,
-                suggestion);
-
-            context.ReportDiagnostic(diagnostic);
         }
     }
 }
