@@ -69,7 +69,6 @@ namespace RustAnalyzer
             private readonly Compilation _compilation;
             private readonly Dictionary<(string TypeName, string MethodName), MethodConfig> _methodCache;
             private readonly Dictionary<IMethodSymbol, bool> _methodCallCache;
-            private readonly HashSet<string> _validPrefabPaths;
 
             private class MethodConfig
             {
@@ -90,45 +89,43 @@ namespace RustAnalyzer
                 _compilation = compilation;
                 _methodCache = new Dictionary<(string, string), MethodConfig>();
                 _methodCallCache = new Dictionary<IMethodSymbol, bool>(SymbolEqualityComparer.Default);
-                _validPrefabPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-                InitializePrefabPaths();
                 InitializeMethodCache();
             }
 
-            /// <summary>
-            /// Initializes the set of valid prefab paths by analyzing StringPool.toNumber.
-            /// </summary>
-            private void InitializePrefabPaths()
-            {
-                // Assuming StringPool.toNumber is accessible and contains the keys
-                var stringPoolType = _compilation.GetTypeByMetadataName("StringPool");
-                if (stringPoolType == null)
-                    return;
+            // /// <summary>
+            // /// Initializes the set of valid prefab paths by analyzing StringPool.toNumber.
+            // /// </summary>
+            // private void InitializePrefabPaths()
+            // {
+            //     // Assuming StringPool.toNumber is accessible and contains the keys
+            //     var stringPoolType = _compilation.GetTypeByMetadataName("StringPool");
+            //     if (stringPoolType == null)
+            //         return;
 
-                var toNumberField = stringPoolType.GetMembers()
-                    .FirstOrDefault(m => m.Kind == SymbolKind.Field && m.Name == "toNumber") as IFieldSymbol;
+            //     var toNumberField = stringPoolType.GetMembers()
+            //         .FirstOrDefault(m => m.Kind == SymbolKind.Field && m.Name == "toNumber") as IFieldSymbol;
 
-                if (toNumberField == null)
-                    return;
+            //     if (toNumberField == null)
+            //         return;
 
-                foreach (var syntaxRef in toNumberField.DeclaringSyntaxReferences)
-                {
-                    var syntax = syntaxRef.GetSyntax() as VariableDeclaratorSyntax;
-                    if (syntax?.Initializer?.Value is ObjectCreationExpressionSyntax objCreation && objCreation.Initializer != null)
-                    {
-                        foreach (var expression in objCreation.Initializer.Expressions)
-                        {
-                            if (expression is AssignmentExpressionSyntax assignExpr &&
-                                assignExpr.Left is LiteralExpressionSyntax literal)
-                            {
-                                var key = literal.Token.ValueText.ToLowerInvariant();
-                                _validPrefabPaths.Add(key);
-                            }
-                        }
-                    }
-                }
-            }
+            //     foreach (var syntaxRef in toNumberField.DeclaringSyntaxReferences)
+            //     {
+            //         var syntax = syntaxRef.GetSyntax() as VariableDeclaratorSyntax;
+            //         if (syntax?.Initializer?.Value is ObjectCreationExpressionSyntax objCreation && objCreation.Initializer != null)
+            //         {
+            //             foreach (var expression in objCreation.Initializer.Expressions)
+            //             {
+            //                 if (expression is AssignmentExpressionSyntax assignExpr &&
+            //                     assignExpr.Left is LiteralExpressionSyntax literal)
+            //                 {
+            //                     var key = literal.Token.ValueText.ToLowerInvariant();
+            //                     _validPrefabPaths.Add(key);
+            //                 }
+            //             }
+            //         }
+            //     }
+            // }
 
             private void InitializeMethodCache()
             {
@@ -271,7 +268,7 @@ namespace RustAnalyzer
                 if (isShortPrefabName)
                 {
                     bool foundMatch = false;
-                    foreach (var prefabName in _validPrefabPaths)
+                    foreach (var prefabName in StringPool.toNumber.Keys)
                     {
                         var shortName = Path.GetFileNameWithoutExtension(prefabName);
                         if (shortName.Equals(stringValue, StringComparison.OrdinalIgnoreCase))
@@ -397,7 +394,7 @@ namespace RustAnalyzer
                     return false;
 
                 path = path.ToLowerInvariant().Replace("\\", "/").Trim();
-                return _validPrefabPaths.Contains(path);
+                return StringPool.toNumber.ContainsKey(path);
             }
 
             private string GetSuggestionMessage(string invalidPath)
@@ -417,7 +414,7 @@ namespace RustAnalyzer
             {
                 invalidPath = invalidPath.ToLowerInvariant().Replace("\\", "/").Trim();
 
-                return _validPrefabPaths
+                return StringPool.toNumber.Keys
                     .Select(p => new { Path = p, Distance = GetLevenshteinDistance(p, invalidPath) })
                     .Where(x => x.Distance <= 5)
                     .OrderBy(x => x.Distance)
@@ -429,7 +426,7 @@ namespace RustAnalyzer
             {
                 shortName = shortName.ToLowerInvariant();
 
-                return _validPrefabPaths
+                return StringPool.toNumber.Keys
                     .Select(p => Path.GetFileNameWithoutExtension(p))
                     .Distinct()
                     .Select(sn => new { ShortName = sn, Distance = GetLevenshteinDistance(sn, shortName) })
