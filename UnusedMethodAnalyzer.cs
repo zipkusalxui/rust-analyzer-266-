@@ -92,13 +92,8 @@ namespace RustAnalyzer
                 return;
             }
 
-            // Проверяем является ли класс Unity-классом
-            // Например, можно проверить, что базовый класс - MonoBehaviour:
-            // Это пример, вы можете адаптировать условие по вашему усмотрению
             bool isUnityClass = IsUnityClass(methodSymbol.ContainingType);
 
-            // Проверяем, является ли метод хуком, используя UnityHooksConfiguration
-            // Только если класс - Unity-класс
             if (isUnityClass && UnityHooksConfiguration.IsHook(methodSymbol))
             {
                 return;
@@ -123,9 +118,6 @@ namespace RustAnalyzer
 
         private static bool IsUnityClass(INamedTypeSymbol typeSymbol)
         {
-            // Примерная проверка:
-            // Проверяем наличие базового класса и сравниваем полное имя 
-            // с UnityEngine.MonoBehaviour или любым другим нужным классом.
             var current = typeSymbol;
             while (current != null)
             {
