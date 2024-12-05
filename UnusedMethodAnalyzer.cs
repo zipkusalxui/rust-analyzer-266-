@@ -92,8 +92,19 @@ namespace RustAnalyzer
                 return;
             }
 
-            // Check if method is a hook
-            if (HooksConfiguration.IsHook(methodSymbol))
+            // Проверяем является ли класс Unity-классом
+            // Например, можно проверить, что базовый класс - MonoBehaviour:
+            // Это пример, вы можете адаптировать условие по вашему усмотрению
+            bool isUnityClass = IsUnityClass(methodSymbol.ContainingType);
+
+            // Проверяем, является ли метод хуком, используя UnityHooksConfiguration
+            // Только если класс - Unity-класс
+            if (isUnityClass && UnityHooksConfiguration.IsHook(methodSymbol))
+            {
+                return;
+            }
+
+            if (HooksConfiguration.IsHook(methodSymbol)) 
             {
                 return;
             }
@@ -110,6 +121,23 @@ namespace RustAnalyzer
             }
         }
 
+        private static bool IsUnityClass(INamedTypeSymbol typeSymbol)
+        {
+            // Примерная проверка:
+            // Проверяем наличие базового класса и сравниваем полное имя 
+            // с UnityEngine.MonoBehaviour или любым другим нужным классом.
+            var current = typeSymbol;
+            while (current != null)
+            {
+                if (current.ToDisplayString() == "UnityEngine.MonoBehaviour")
+                {
+                    return true;
+                }
+                current = current.BaseType;
+            }
+            return false;
+        }
+
         private static bool IsMethodUsed(IMethodSymbol method, SyntaxNodeAnalysisContext context)
         {
             // Ignore override methods
@@ -119,8 +147,7 @@ namespace RustAnalyzer
             }
 
             var root = context.Node.SyntaxTree.GetRoot(context.CancellationToken);
-            var invocations = root.DescendantNodes()
-                .OfType<InvocationExpressionSyntax>();
+            var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
 
             foreach (var invocation in invocations)
             {
