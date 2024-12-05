@@ -60,17 +60,25 @@ public class StringPoolGetAnalyzer : DiagnosticAnalyzer
         private readonly Dictionary<(string TypeName, string MethodName), MethodConfig> _methodCache;
         private readonly Dictionary<IMethodSymbol, bool> _methodCallCache;
 
+        private enum PrefabNameCheckType
+        {
+            FullPath,
+            ShortName
+        }
+
         private class MethodConfig
         {
             public string TypeName { get; }
             public string MethodName { get; }
             public List<int> ParameterIndices { get; }
+            public PrefabNameCheckType CheckType { get; }
 
-            public MethodConfig(string typeName, string methodName, List<int> parameterIndices)
+            public MethodConfig(string typeName, string methodName, List<int> parameterIndices, PrefabNameCheckType checkType = PrefabNameCheckType.FullPath)
             {
                 TypeName = typeName;
                 MethodName = methodName;
                 ParameterIndices = parameterIndices;
+                CheckType = checkType;
             }
         }
 
@@ -84,20 +92,24 @@ public class StringPoolGetAnalyzer : DiagnosticAnalyzer
 
         private void InitializeMethodCache()
         {
+            // Пример: Методы, работающие с полным путем префаба остаются без изменений,
+            // а методы, которые работают с коротким именем — задаем CheckType = PrefabNameCheckType.ShortName
             var knownMethods = new List<MethodConfig>
             {
-                new MethodConfig("GameManager", "CreateEntity", new List<int> { 0 }),
-                new MethodConfig("BaseEntity", "Spawn", new List<int>()),
-                new MethodConfig("PrefabAttribute", "server", new List<int>()),
-                new MethodConfig("PrefabAttribute", "client", new List<int>()),
-                new MethodConfig("GameManifest", "PathToStringID", new List<int> { 0 }),
-                new MethodConfig("StringPool", "Add", new List<int> { 0 }),
-                new MethodConfig("GameManager", "FindPrefab", new List<int> { 0 }),
-                new MethodConfig("ItemManager", "CreateByName", new List<int> { 0 }),
-                new MethodConfig("ItemManager", "FindItemDefinition", new List<int> { 0 }),
-                new MethodConfig("GameManager", "LoadPrefab", new List<int> { 0 }),
-                new MethodConfig("PrefabAttribute", "Find", new List<int> { 0 }),
-                new MethodConfig("StringPool", "Get", new List<int> { 0 })
+                new MethodConfig("GameManager", "CreateEntity", new List<int> { 0 }, PrefabNameCheckType.FullPath),
+                new MethodConfig("BaseEntity", "Spawn", new List<int>(), PrefabNameCheckType.FullPath),
+                new MethodConfig("PrefabAttribute", "server", new List<int>(), PrefabNameCheckType.FullPath),
+                new MethodConfig("PrefabAttribute", "client", new List<int>(), PrefabNameCheckType.FullPath),
+                new MethodConfig("GameManifest", "PathToStringID", new List<int> { 0 }, PrefabNameCheckType.FullPath),
+                new MethodConfig("StringPool", "Add", new List<int> { 0 }, PrefabNameCheckType.FullPath),
+                new MethodConfig("GameManager", "FindPrefab", new List<int> { 0 }, PrefabNameCheckType.FullPath),
+                // Предположим, что CreateByName использует короткое имя
+                new MethodConfig("ItemManager", "CreateByName", new List<int> { 0 }, PrefabNameCheckType.ShortName),
+                // Предположим, что FindItemDefinition тоже использует короткое имя
+                new MethodConfig("ItemManager", "FindItemDefinition", new List<int> { 0 }, PrefabNameCheckType.ShortName),
+                new MethodConfig("GameManager", "LoadPrefab", new List<int> { 0 }, PrefabNameCheckType.FullPath),
+                new MethodConfig("PrefabAttribute", "Find", new List<int> { 0 }, PrefabNameCheckType.FullPath),
+                new MethodConfig("StringPool", "Get", new List<int> { 0 }, PrefabNameCheckType.FullPath)
             };
 
             foreach (var methodConfig in knownMethods)
@@ -125,7 +137,8 @@ public class StringPoolGetAnalyzer : DiagnosticAnalyzer
                     if (MethodCallsKnownMethod(methodSymbol))
                     {
                         var parameterIndices = Enumerable.Range(0, methodSymbol.Parameters.Length).ToList();
-                        var methodConfig = new MethodConfig(methodSymbol.ContainingType.Name, methodSymbol.Name, parameterIndices);
+                        // По умолчанию пусть будет FullPath, при желании можно найти способ определить тип автоматически
+                        var methodConfig = new MethodConfig(methodSymbol.ContainingType.Name, methodSymbol.Name, parameterIndices, PrefabNameCheckType.FullPath);
                         _methodCache[methodKey] = methodConfig;
                     }
                 }
@@ -208,18 +221,7 @@ public class StringPoolGetAnalyzer : DiagnosticAnalyzer
 
             if (isShortPrefabName)
             {
-                bool foundMatch = false;
-                foreach (var prefabName in StringPool.toNumber.Keys)
-                {
-                    var shortName = Path.GetFileNameWithoutExtension(prefabName);
-                    if (shortName.Equals(stringValue, StringComparison.OrdinalIgnoreCase))
-                    {
-                        foundMatch = true;
-                        break;
-                    }
-                }
-
-                if (!foundMatch)
+                if (!IsValidShortName(stringValue))
                 {
                     var suggestions = FindSimilarShortNames(stringValue);
 
@@ -283,12 +285,12 @@ public class StringPoolGetAnalyzer : DiagnosticAnalyzer
                 if (arguments.Count > index)
                 {
                     var argument = arguments[index].Expression;
-                    AnalyzeArgumentForPrefabPath(context, argument);
+                    AnalyzeArgument(context, argument, methodConfig.CheckType);
                 }
             }
         }
 
-        private void AnalyzeArgumentForPrefabPath(SyntaxNodeAnalysisContext context, ExpressionSyntax argument)
+        private void AnalyzeArgument(SyntaxNodeAnalysisContext context, ExpressionSyntax argument, PrefabNameCheckType checkType)
         {
             var semanticModel = context.SemanticModel;
 
@@ -299,15 +301,7 @@ public class StringPoolGetAnalyzer : DiagnosticAnalyzer
                     return;
 
                 var stringValue = literal.Token.ValueText;
-                if (!IsValidPrefabPath(stringValue))
-                {
-                    ReportDiagnostic(
-                        context,
-                        literal.GetLocation(),
-                        stringValue,
-                        GetSuggestionMessage(stringValue)
-                    );
-                }
+                CheckStringValue(context, stringValue, literal.GetLocation(), checkType);
             }
             else
             {
@@ -322,18 +316,58 @@ public class StringPoolGetAnalyzer : DiagnosticAnalyzer
                     var literals = GetStringLiteralsFromSymbol(symbol, semanticModel);
                     foreach (var kvp in literals)
                     {
-                        if (!IsValidPrefabPath(kvp.Key))
-                        {
-                            ReportDiagnostic(
-                                context,
-                                kvp.Value,
-                                kvp.Key,
-                                GetSuggestionMessage(kvp.Key)
-                            );
-                        }
+                        CheckStringValue(context, kvp.Key, kvp.Value, checkType);
                     }
                 }
             }
+        }
+
+        private void CheckStringValue(SyntaxNodeAnalysisContext context, string value, Location location, PrefabNameCheckType checkType)
+        {
+            if (checkType == PrefabNameCheckType.FullPath)
+            {
+                if (!IsValidPrefabPath(value))
+                {
+                    ReportDiagnostic(
+                        context,
+                        location,
+                        value,
+                        GetSuggestionMessage(value)
+                    );
+                }
+            }
+            else
+            {
+                // Проверяем короткое имя
+                if (!IsValidShortName(value))
+                {
+                    var suggestions = FindSimilarShortNames(value);
+                    string suggestionMessage = suggestions.Any()
+                        ? $" Did you mean one of these: {string.Join(", ", suggestions)}?"
+                        : " Make sure to use a valid prefab short name";
+
+                    ReportDiagnostic(
+                        context,
+                        location,
+                        value,
+                        suggestionMessage
+                    );
+                }
+            }
+        }
+
+        private bool IsValidShortName(string shortName)
+        {
+            shortName = shortName.ToLowerInvariant().Trim();
+            foreach (var prefabName in StringPool.toNumber.Keys)
+            {
+                var sn = Path.GetFileNameWithoutExtension(prefabName);
+                if (sn.Equals(shortName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private bool IsValidPrefabPath(string path)
