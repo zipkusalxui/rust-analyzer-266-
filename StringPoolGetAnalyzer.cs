@@ -197,6 +197,7 @@ public class StringPoolGetAnalyzer : DiagnosticAnalyzer
             var literalExpression = leftLiteral ?? rightLiteral;
             var memberAccess = leftMemberAccess ?? rightMemberAccess;
 
+            // Если не строковый литерал, выходим
             if (literalExpression == null || memberAccess == null || !literalExpression.IsKind(SyntaxKind.StringLiteralExpression))
             {
                 return;
@@ -293,6 +294,7 @@ public class StringPoolGetAnalyzer : DiagnosticAnalyzer
 
             if (argument is LiteralExpressionSyntax literal)
             {
+                // Проверяем, что литерал строковый
                 if (!literal.IsKind(SyntaxKind.StringLiteralExpression))
                     return;
 
@@ -309,6 +311,11 @@ public class StringPoolGetAnalyzer : DiagnosticAnalyzer
             }
             else
             {
+                // Проверим, что тип аргумента - строка
+                var typeInfo = semanticModel.GetTypeInfo(argument);
+                if (typeInfo.Type == null || typeInfo.Type.SpecialType != SpecialType.System_String)
+                    return;
+
                 var symbol = semanticModel.GetSymbolInfo(argument).Symbol;
                 if (symbol != null)
                 {
