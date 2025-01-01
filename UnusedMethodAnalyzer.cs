@@ -16,6 +16,9 @@ namespace RustAnalyzer
 
         private static readonly LocalizableString Title = "Unused method detected";
         private static readonly LocalizableString MessageFormat = "Method '{0}' is never used";
+        private static readonly LocalizableString MessageFormatWithHooks = "Method '{0}' is never used.\n" +
+            "If you intended this to be a hook, no matching hook was found.\n" +
+            "Similar hooks that might match: {1}";
         private static readonly LocalizableString Description = "Methods should be used or removed to maintain clean code.";
 
         private static readonly DiagnosticDescriptor Rule = new DiagnosticDescriptor(
@@ -107,10 +110,42 @@ namespace RustAnalyzer
             // Check if method is used
             if (!IsMethodUsed(methodSymbol, context))
             {
+                // Get similar hook suggestions
+                var allHooks = HooksConfiguration.HookSignatures
+                    .Select(h => h.HookName)
+                    .Distinct();
+                    
+                var similarHooks = StringDistance.FindSimilarShortNames(
+                    methodSymbol.Name, 
+                    allHooks, 
+                    maxSuggestions: 3);
+                    
+                var suggestionsText = string.Join(", ", similarHooks);
+                
                 var diagnostic = Diagnostic.Create(
-                    Rule,
+                    string.IsNullOrEmpty(suggestionsText) 
+                        ? new DiagnosticDescriptor(
+                            DiagnosticId,
+                            Title,
+                            MessageFormat,
+                            Category,
+                            DiagnosticSeverity.Warning,
+                            isEnabledByDefault: true,
+                            description: Description,
+                            helpLinkUri: "https://github.com/legov/rust-analyzer/blob/main/docs/RUST003.md")
+                        : new DiagnosticDescriptor(
+                            DiagnosticId,
+                            Title,
+                            MessageFormatWithHooks,
+                            Category,
+                            DiagnosticSeverity.Warning,
+                            isEnabledByDefault: true,
+                            description: Description,
+                            helpLinkUri: "https://github.com/legov/rust-analyzer/blob/main/docs/RUST003.md"),
                     methodSymbol.Locations[0],
-                    methodSymbol.Name);
+                    string.IsNullOrEmpty(suggestionsText) 
+                        ? new[] { methodSymbol.Name }
+                        : new[] { methodSymbol.Name, suggestionsText });
 
                 context.ReportDiagnostic(diagnostic);
             }
