@@ -241,11 +241,63 @@ namespace RustAnalyzer
                                 },
                                 Description = "Imports list of items"
                             }
+                        },
+                        {
+                            "ImportImageData",
+                            new PluginMethod
+                            {
+                                ReturnType = "void",
+                                Parameters = new List<PluginMethodParameter>
+                                {
+                                    new PluginMethodParameter { Name = "title", Type = "string" },
+                                    new PluginMethodParameter { Name = "imageList", Type = "Dictionary<string, byte[]>" },
+                                    new PluginMethodParameter { Name = "imageId", Type = "ulong", IsOptional = true, DefaultValue = "0" },
+                                    new PluginMethodParameter { Name = "replace", Type = "bool", IsOptional = true, DefaultValue = "false" },
+                                    new PluginMethodParameter { Name = "callback", Type = "Action", IsOptional = true, DefaultValue = "null" }
+                                }
+                            }
+                        },
+                        {
+                            "LoadImageList",
+                            new PluginMethod
+                            {
+                                ReturnType = "void",
+                                Parameters = new List<PluginMethodParameter>
+                                {
+                                    new PluginMethodParameter { Name = "title", Type = "string" },
+                                    new PluginMethodParameter { Name = "imageList", Type = "List<KeyValuePair<string, ulong>>" },
+                                    new PluginMethodParameter { Name = "callback", Type = "Action", IsOptional = true, DefaultValue = "null" }
+                                }
+                            }
+                        },
+                        {
+                            "RemoveImage",
+                            new PluginMethod
+                            {
+                                ReturnType = "void",
+                                Parameters = new List<PluginMethodParameter>
+                                {
+                                    new PluginMethodParameter { Name = "imageName", Type = "string" },
+                                    new PluginMethodParameter { Name = "imageId", Type = "ulong" }
+                                }
+                            }
+                        },
+                        {
+                            "SendImage",
+                            new PluginMethod
+                            {
+                                ReturnType = "void",
+                                Parameters = new List<PluginMethodParameter>
+                                {
+                                    new PluginMethodParameter { Name = "player", Type = "BasePlayer" },
+                                    new PluginMethodParameter { Name = "imageName", Type = "string" },
+                                    new PluginMethodParameter { Name = "imageId", Type = "ulong", IsOptional = true, DefaultValue = "0" }
+                                }
+                            }
                         }
                     }
                 }
             }
-            // Здесь можно добавить конфигурации для других плагинов
         };
 
         public static PluginConfiguration GetConfiguration(string pluginName)
