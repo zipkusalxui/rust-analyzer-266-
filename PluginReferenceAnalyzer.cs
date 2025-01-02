@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -31,6 +32,26 @@ namespace RustAnalyzer
             description: "The method call has invalid parameters.",
             helpLinkUri: "https://github.com/publicrust/rust-analyzer/blob/main/docs/RUST000041.md");
 
+        private static readonly DiagnosticDescriptor InvalidGenericTypeRule = new DiagnosticDescriptor(
+            id: "RUST000043",
+            title: "Invalid generic type for plugin method",
+            messageFormat: "Method '{0}' returns '{1}' but trying to use as '{2}'",
+            category: "Usage",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            description: "The generic type parameter does not match the method's return type.",
+            helpLinkUri: "https://github.com/publicrust/rust-analyzer/blob/main/docs/RUST000043.md");
+
+        private static readonly DiagnosticDescriptor VoidMethodWithGenericRule = new DiagnosticDescriptor(
+            id: "RUST000044",
+            title: "Void method with generic parameter",
+            messageFormat: "Method '{0}' returns void and cannot be used with generic parameter",
+            category: "Usage",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            description: "Void methods cannot be used with generic type parameters.",
+            helpLinkUri: "https://github.com/publicrust/rust-analyzer/blob/main/docs/RUST000044.md");
+
         private static readonly DiagnosticDescriptor DebugRule = new DiagnosticDescriptor(
             id: "RUST000042",
             title: "Debug Info",
@@ -43,7 +64,7 @@ namespace RustAnalyzer
         private SyntaxNodeAnalysisContext? _currentContext;
 
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics 
-            => ImmutableArray.Create(InvalidMethodRule, InvalidParametersRule, DebugRule);
+            => ImmutableArray.Create(InvalidMethodRule, InvalidParametersRule, InvalidGenericTypeRule, VoidMethodWithGenericRule, DebugRule);
 
         public override void Initialize(AnalysisContext context)
         {
@@ -57,6 +78,7 @@ namespace RustAnalyzer
 
         private void AnalyzeInvocationExpression(SyntaxNodeAnalysisContext context)
         {
+            Debug.WriteLine($"Analyzing invocation: {context.Node}");
             _currentContext = context;
             var invocation = (InvocationExpressionSyntax)context.Node;
             
@@ -133,6 +155,35 @@ namespace RustAnalyzer
                     firstArg.GetLocation(), methodName, pluginName, availableMethods);
                 context.ReportDiagnostic(diagnostic);
                 return;
+            }
+
+            // Проверяем generic тип
+            var genericType = GetGenericType(invocation);
+            Debug.WriteLine($"Found generic type: {genericType}");
+            
+            if (genericType != null)
+            {
+                var returnType = method.ReturnType;
+                Debug.WriteLine($"Method return type: {returnType}");
+
+                if (returnType.Equals("void", StringComparison.OrdinalIgnoreCase))
+                {
+                    Debug.WriteLine("Method returns void, reporting error");
+                    var diagnostic = Diagnostic.Create(VoidMethodWithGenericRule,
+                        invocation.GetLocation(), methodName);
+                    context.ReportDiagnostic(diagnostic);
+                    return;
+                }
+
+                Debug.WriteLine($"Comparing types: {returnType} vs {genericType}");
+                if (!returnType.Equals(genericType.ToString(), StringComparison.OrdinalIgnoreCase))
+                {
+                    Debug.WriteLine("Types don't match, reporting error");
+                    var diagnostic = Diagnostic.Create(InvalidGenericTypeRule,
+                        invocation.GetLocation(), methodName, returnType, genericType);
+                    context.ReportDiagnostic(diagnostic);
+                    return;
+                }
             }
 
             // Проверяем параметры метода
@@ -240,6 +291,40 @@ namespace RustAnalyzer
                 }
             }
             return false;
+        }
+
+        private TypeSyntax GetGenericType(InvocationExpressionSyntax invocation)
+        {
+            Debug.WriteLine($"Getting generic type for invocation: {invocation}");
+
+            // Проверяем прямой вызов метода (plugin.Call<T>())
+            if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
+            {
+                Debug.WriteLine($"Found member access: {memberAccess}");
+                if (memberAccess.Name is GenericNameSyntax genericName)
+                {
+                    Debug.WriteLine($"Found generic name in member access: {genericName}");
+                    var type = genericName.TypeArgumentList.Arguments.First();
+                    Debug.WriteLine($"Found type argument: {type}");
+                    return type;
+                }
+            }
+
+            // Проверяем условный вызов метода (plugin?.Call<T>())
+            if (invocation.Expression is MemberBindingExpressionSyntax memberBinding)
+            {
+                Debug.WriteLine($"Found member binding: {memberBinding}");
+                if (memberBinding.Name is GenericNameSyntax genericName)
+                {
+                    Debug.WriteLine($"Found generic name in member binding: {genericName}");
+                    var type = genericName.TypeArgumentList.Arguments.First();
+                    Debug.WriteLine($"Found type argument in binding: {type}");
+                    return type;
+                }
+            }
+
+            Debug.WriteLine("No generic type found");
+            return null;
         }
     }
 } 
