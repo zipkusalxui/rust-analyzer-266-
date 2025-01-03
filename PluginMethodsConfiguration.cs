@@ -297,6 +297,47 @@ namespace RustAnalyzer
                         }
                     }
                 }
+            },
+            {
+                "CopyPaste",
+                new PluginConfiguration
+                {
+                    PluginName = "CopyPaste",
+                    Methods = new Dictionary<string, PluginMethod>
+                    {
+                        ["TryCopyFromSteamId"] = new PluginMethod
+                        {
+                            ReturnType = "object",
+                            Parameters = new List<PluginMethodParameter>
+                            {
+                                new PluginMethodParameter { Name = "userID", Type = "ulong" },
+                                new PluginMethodParameter { Name = "filename", Type = "string" },
+                                new PluginMethodParameter { Name = "args", Type = "string[]" }
+                            }
+                        },
+                        ["TryPasteFromSteamId"] = new PluginMethod
+                        {
+                            ReturnType = "object",
+                            Parameters = new List<PluginMethodParameter>
+                            {
+                                new PluginMethodParameter { Name = "userID", Type = "ulong" },
+                                new PluginMethodParameter { Name = "filename", Type = "string" },
+                                new PluginMethodParameter { Name = "args", Type = "string[]" }
+                            }
+                        },
+                        ["TryPasteFromVector3"] = new PluginMethod
+                        {
+                            ReturnType = "object",
+                            Parameters = new List<PluginMethodParameter>
+                            {
+                                new PluginMethodParameter { Name = "pos", Type = "Vector3" },
+                                new PluginMethodParameter { Name = "rotationCorrection", Type = "float" },
+                                new PluginMethodParameter { Name = "filename", Type = "string" },
+                                new PluginMethodParameter { Name = "args", Type = "string[]" }
+                            }
+                        }
+                    }
+                }
             }
         };
 
