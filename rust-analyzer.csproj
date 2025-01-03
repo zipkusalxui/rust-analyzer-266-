@@ -16,7 +16,7 @@
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
-    <Version>8.0.3</Version>
+    <Version>8.0.4</Version>
     <!-- Enable analyzer release tracking -->
     <EnableReleaseTracking>true</EnableReleaseTracking>
   </PropertyGroup>
