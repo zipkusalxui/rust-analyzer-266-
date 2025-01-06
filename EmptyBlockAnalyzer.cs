@@ -37,16 +37,13 @@ namespace RustAnalyzer
         {
             var block = (BlockSyntax)context.Node;
 
-            // Пропускаем блоки в интерфейсах и абстрактных методах
             if (IsInterfaceOrAbstractMethod(block))
                 return;
 
-            // Пропускаем блоки в автосвойствах
             if (IsAutoPropertyAccessor(block))
                 return;
 
-            // Проверяем, содержит ли блок какие-либо выражения или операторы
-            if (!block.Statements.Any() && !HasComments(block))
+            if (!block.Statements.Any())
             {
                 var parentContext = GetParentContext(block);
                 var diagnostic = Diagnostic.Create(Rule, block.GetLocation(), parentContext);
@@ -75,14 +72,6 @@ namespace RustAnalyzer
             return block.Parent is AccessorDeclarationSyntax accessor &&
                    accessor.Parent is AccessorListSyntax accessorList &&
                    accessorList.Parent is PropertyDeclarationSyntax;
-        }
-
-        private bool HasComments(BlockSyntax block)
-        {
-            // Проверяем наличие комментариев внутри блока
-            var triviaList = block.DescendantTrivia();
-            return triviaList.Any(t => t.IsKind(SyntaxKind.SingleLineCommentTrivia) || 
-                                     t.IsKind(SyntaxKind.MultiLineCommentTrivia));
         }
 
         private string GetParentContext(BlockSyntax block)
