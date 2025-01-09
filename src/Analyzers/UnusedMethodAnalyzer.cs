@@ -103,9 +103,7 @@ namespace RustAnalyzer
                 return;
             }
 
-            bool isUnityClass = IsUnityClass(methodSymbol.ContainingType);
-
-            if (isUnityClass && UnityHooksConfiguration.IsHook(methodSymbol))
+            if (UnityHooksConfiguration.IsHook(methodSymbol))
             {
                 return;
             }
@@ -183,20 +181,6 @@ namespace RustAnalyzer
                     context.ReportDiagnostic(basicDiagnostic);
                 }
             }
-        }
-
-        private static bool IsUnityClass(INamedTypeSymbol typeSymbol)
-        {
-            var current = typeSymbol;
-            while (current != null)
-            {
-                if (current.ToDisplayString() == "UnityEngine.MonoBehaviour")
-                {
-                    return true;
-                }
-                current = current.BaseType;
-            }
-            return false;
         }
 
         private static bool IsMethodUsed(IMethodSymbol method, SyntaxNodeAnalysisContext context)
