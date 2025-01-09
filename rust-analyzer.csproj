@@ -3,9 +3,20 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <DevelopmentDependency>true</DevelopmentDependency>
+    <NoPackageAnalysis>true</NoPackageAnalysis>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <AnalyzerRoslynVersion>4.7.0</AnalyzerRoslynVersion>
     <LangVersion>latest</LangVersion>
-    <IsPackable>false</IsPackable>
+    <IsPackable>true</IsPackable>
     <RootNamespace>RustAnalyzer</RootNamespace>
+    <AssemblyName>rust-analyzer</AssemblyName>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
     <Nullable>enable</Nullable>
     <Version>8.0.6</Version>
