@@ -54,5 +54,14 @@ namespace RustAnalyzer
                 .Take(maxSuggestions)
                 .Select(x => x.ShortName);
         }
+
+        public static IEnumerable<(string key, string value)> FindKeyValues(string input, IEnumerable<(string key, string value)> prefabs, int maxSuggestions = 3)
+        {
+            return prefabs
+                .Select(p => new { p.key, ShortName = p.value, Distance = GetLevenshteinDistance(input, p.value) })
+                .OrderBy(x => x.Distance)
+                .Take(maxSuggestions)
+                .Select(x => (x.key, x.ShortName));
+        }
     }
 }
