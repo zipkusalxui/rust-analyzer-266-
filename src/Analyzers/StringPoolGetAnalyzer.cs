@@ -41,7 +41,6 @@ public class StringPoolGetAnalyzer : DiagnosticAnalyzer
 
     public override void Initialize(AnalysisContext context)
     {
-        Debug.WriteLine("Initializing analyzer");
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
         context.RegisterCompilationStartAction(InitializePerCompilation);
@@ -192,7 +191,6 @@ public class StringPoolGetAnalyzer : DiagnosticAnalyzer
 
         public void AnalyzeBinaryExpression(SyntaxNodeAnalysisContext context)
         {
-            Debug.WriteLine("Analyzing binary expression");
             var binaryExpression = (BinaryExpressionSyntax)context.Node;
 
             var leftMemberAccess = binaryExpression.Left as MemberAccessExpressionSyntax;
@@ -203,7 +201,6 @@ public class StringPoolGetAnalyzer : DiagnosticAnalyzer
 
             if (!IsValidPrefabNameComparison(context, leftMemberAccess, leftLiteral, rightMemberAccess, rightLiteral))
             {
-                Debug.WriteLine("Not a valid prefab name comparison");
                 return;
             }
 
@@ -229,14 +226,12 @@ public class StringPoolGetAnalyzer : DiagnosticAnalyzer
                         ? $" Did you mean one of these: {string.Join(", ", suggestions)}?"
                         : " Make sure to use a valid prefab short name";
 
-                    Debug.WriteLine($"Creating diagnostic for {stringValue}");
                     var diagnostic = Diagnostic.Create(
                         Rule,
                         literalExpression.GetLocation(),
                         stringValue,
                         suggestionMessage);
                     context.ReportDiagnostic(diagnostic);
-                    Debug.WriteLine("Diagnostic reported");
                 }
             }
             else
@@ -249,14 +244,12 @@ public class StringPoolGetAnalyzer : DiagnosticAnalyzer
                         ? $" Did you mean one of these: {string.Join(", ", suggestions)}?"
                         : " Make sure to use a valid prefab path";
 
-                    Debug.WriteLine($"Creating diagnostic for {stringValue}");
                     var diagnostic = Diagnostic.Create(
                         Rule,
                         literalExpression.GetLocation(),
                         stringValue,
                         suggestionMessage);
                     context.ReportDiagnostic(diagnostic);
-                    Debug.WriteLine("Diagnostic reported");
                 }
             }
         }
@@ -264,7 +257,6 @@ public class StringPoolGetAnalyzer : DiagnosticAnalyzer
         public void AnalyzeInvocationExpression(SyntaxNodeAnalysisContext context)
         {
             var invocation = (InvocationExpressionSyntax)context.Node;
-            Debug.WriteLine($"Analyzing invocation at {invocation.GetLocation()}");
 
             if (IsGeneratedCode(invocation.SyntaxTree, context.CancellationToken))
                 return;

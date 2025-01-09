@@ -78,7 +78,6 @@ namespace RustAnalyzer
 
         private void AnalyzeInvocationExpression(SyntaxNodeAnalysisContext context)
         {
-            Debug.WriteLine($"Analyzing invocation: {context.Node}");
             _currentContext = context;
             var invocation = (InvocationExpressionSyntax)context.Node;
             
@@ -159,26 +158,21 @@ namespace RustAnalyzer
 
             // Проверяем generic тип
             var genericType = GetGenericType(invocation);
-            Debug.WriteLine($"Found generic type: {genericType}");
             
             if (genericType != null)
             {
                 var returnType = method.ReturnType;
-                Debug.WriteLine($"Method return type: {returnType}");
 
                 if (returnType.Equals("void", StringComparison.OrdinalIgnoreCase))
                 {
-                    Debug.WriteLine("Method returns void, reporting error");
                     var diagnostic = Diagnostic.Create(VoidMethodWithGenericRule,
                         invocation.GetLocation(), methodName);
                     context.ReportDiagnostic(diagnostic);
                     return;
                 }
 
-                Debug.WriteLine($"Comparing types: {returnType} vs {genericType}");
                 if (!returnType.Equals(genericType.ToString(), StringComparison.OrdinalIgnoreCase))
                 {
-                    Debug.WriteLine("Types don't match, reporting error");
                     var diagnostic = Diagnostic.Create(InvalidGenericTypeRule,
                         invocation.GetLocation(), methodName, returnType, genericType);
                     context.ReportDiagnostic(diagnostic);
@@ -295,17 +289,13 @@ namespace RustAnalyzer
 
         private TypeSyntax GetGenericType(InvocationExpressionSyntax invocation)
         {
-            Debug.WriteLine($"Getting generic type for invocation: {invocation}");
 
             // Проверяем прямой вызов метода (plugin.Call<T>())
             if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
             {
-                Debug.WriteLine($"Found member access: {memberAccess}");
                 if (memberAccess.Name is GenericNameSyntax genericName)
                 {
-                    Debug.WriteLine($"Found generic name in member access: {genericName}");
                     var type = genericName.TypeArgumentList.Arguments.First();
-                    Debug.WriteLine($"Found type argument: {type}");
                     return type;
                 }
             }
@@ -313,17 +303,13 @@ namespace RustAnalyzer
             // Проверяем условный вызов метода (plugin?.Call<T>())
             if (invocation.Expression is MemberBindingExpressionSyntax memberBinding)
             {
-                Debug.WriteLine($"Found member binding: {memberBinding}");
                 if (memberBinding.Name is GenericNameSyntax genericName)
                 {
-                    Debug.WriteLine($"Found generic name in member binding: {genericName}");
                     var type = genericName.TypeArgumentList.Arguments.First();
-                    Debug.WriteLine($"Found type argument in binding: {type}");
                     return type;
                 }
             }
 
-            Debug.WriteLine("No generic type found");
             return null;
         }
     }
