@@ -17,10 +17,10 @@ namespace OxideAnalyzers
             "Object should be checked for null before use";
 
         private static readonly LocalizableString MessageFormat = 
-            "'{0}' at line {1} should be checked for null before use";
+            "'{0}' at line {1} in hook {2} should be checked for null before use";
 
         private static readonly LocalizableString Description = 
-            "Objects in Oxide/uMod plugins should be checked for null before accessing their members to prevent NullReferenceException.";
+            "Objects in Oxide/uMod hooks should be checked for null before accessing their members to prevent NullReferenceException.";
 
         private const string Category = "Usage";
 
@@ -51,6 +51,13 @@ namespace OxideAnalyzers
             var methodSymbol = context.SemanticModel.GetDeclaredSymbol(methodDeclaration);
             
             if (methodSymbol == null) return;
+
+            if (!HooksConfiguration.IsHook(methodSymbol) && 
+                !PluginHooksConfiguration.IsHook(methodSymbol))
+                return;
+
+            // Получаем полную сигнатуру хука для сообщения об ошибке
+            var hookSignature = $"{methodSymbol.Name}({string.Join(", ", methodSymbol.Parameters.Select(p => $"{p.Type.Name} {p.Name}"))})";
 
             var parameters = methodDeclaration.ParameterList.Parameters;
             
@@ -140,7 +147,8 @@ namespace OxideAnalyzers
                         var diagnostic = Diagnostic.Create(Rule, 
                             memberAccess.GetLocation(), 
                             $"{parameter.Identifier.Text}.{memberName}",
-                            lineNumber);
+                            lineNumber,
+                            hookSignature);
                         context.ReportDiagnostic(diagnostic);
                     }
                 }
