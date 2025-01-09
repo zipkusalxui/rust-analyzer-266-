@@ -22,10 +22,6 @@ namespace RustAnalyzer
             "Method '{0}' is never used.\n" +
             "If you intended this to be a hook, no matching hook was found.\n" +
             "Similar hooks that might match: {1}";
-        private static readonly LocalizableString MessageFormatWithPluginHooks = 
-            "Method '{0}' is never used.\n" +
-            "If you intended this to be a hook, no matching hook was found.\n" +
-            "Similar plugin hooks that might match: {1} (from plugins: {2})";
         private static readonly LocalizableString MessageFormatCommand = 
             "Method '{0}' is never used.\n" +
             "If you intended this to be a command, here are the common command signatures:\n" +
@@ -86,30 +82,24 @@ namespace RustAnalyzer
                 return;
             }
 
-            // Получаем похожие хуки
-            var commonHooks = HooksConfiguration.GetSimilarHooks(methodSymbol, 3)
-                .Concat(UnityHooksConfiguration.GetSimilarHooks(methodSymbol, 3))
+            
+            var rustHooks = StringDistance.FindKeyValues(
+                methodSymbol.Name,
+                HooksConfiguration.GetSimilarHooks(methodSymbol, 3)
+                    .Select(s => ("rust", s))
+                    .Concat(PluginHooksConfiguration.GetSimilarHooks(methodSymbol, 3)
+                        .Select(s => ($" (from plugin: {s.pluginName})", s.hookName))),
+                3).Select(s => s.key == "rust" ? s.value : s.value + s.key);
+
+            // Получаем похожие хуки Unity
+            var unityHooks = UnityHooksConfiguration.GetSimilarHooks(methodSymbol, 3);
+                
+            // Объединяем все хуки
+            var commonHooks = rustHooks.Concat(unityHooks)
                 .Distinct()
                 .ToList();
-
-            var pluginHooks = PluginHooksConfiguration.GetSimilarHooks(methodSymbol, 3).ToList();
-
-            // Если есть похожие хуки из плагинов
-            if (pluginHooks.Any())
-            {
-                var hookNames = string.Join(", ", pluginHooks.Select(h => h.hookName));
-                var pluginNames = string.Join(", ", pluginHooks.Select(h => h.pluginSource));
-
-                ReportDiagnostic(
-                    context,
-                    methodSymbol,
-                    MessageFormatWithPluginHooks,
-                    methodSymbol.Name,
-                    hookNames,
-                    pluginNames);
-            }
-            // Если есть обычные похожие хуки
-            else if (commonHooks.Any())
+                
+            if (commonHooks.Any())
             {
                 var suggestionsText = string.Join(", ", commonHooks);
 
