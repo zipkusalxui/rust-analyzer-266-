@@ -19,6 +19,9 @@ namespace RustAnalyzer
         private static readonly LocalizableString MessageFormatWithHooks = "Method '{0}' is never used.\n" +
             "If you intended this to be a hook, no matching hook was found.\n" +
             "Similar hooks that might match: {1}";
+        private static readonly LocalizableString MessageFormatWithPluginHooks = "Method '{0}' is never used.\n" +
+            "If you intended this to be a hook, no matching hook was found.\n" +
+            "Similar plugin hooks that might match: {1} (from plugins: {2})";
         private static readonly LocalizableString MessageFormatCommand = "Method '{0}' is never used.\n" +
             "If you intended this to be a command, here are the common command signatures:\n" +
             "[Command(\"name\")]\n" +
@@ -113,6 +116,11 @@ namespace RustAnalyzer
                 return;
             }
 
+            if(PluginHooksConfiguration.IsHook(methodSymbol))
+            {
+                return;
+            }
+
             // Check if method is used
             if (!IsMethodUsed(methodSymbol, context))
             {
@@ -141,10 +149,35 @@ namespace RustAnalyzer
                 // Get similar hook suggestions
                 var similarHooks = HooksConfiguration.GetSimilarHooks(methodSymbol, 3)
                     .Concat(UnityHooksConfiguration.GetSimilarHooks(methodSymbol, 3));
+
+                var pluginHooks = PluginHooksConfiguration.GetSimilarHooks(methodSymbol, 3).ToList();
                     
                 var suggestionsText = string.Join(", ", similarHooks);
                 
-                if (!string.IsNullOrEmpty(suggestionsText))
+                if (pluginHooks.Any())
+                {
+                    var hookNames = string.Join(", ", pluginHooks.Select(h => h.hookName));
+                    var pluginNames = string.Join(", ", pluginHooks.Select(h => h.pluginSource));
+
+                    var pluginHookDiagnostic = Diagnostic.Create(
+                        new DiagnosticDescriptor(
+                            DiagnosticId,
+                            Title,
+                            MessageFormatWithPluginHooks,
+                            Category,
+                            DiagnosticSeverity.Warning,
+                            isEnabledByDefault: true,
+                            description: Description,
+                            helpLinkUri: "https://github.com/legov/rust-analyzer/blob/main/docs/RUST003.md"),
+                        methodSymbol.Locations[0],
+                        methodSymbol.Name,
+                        hookNames,
+                        pluginNames);
+
+                    context.ReportDiagnostic(pluginHookDiagnostic);
+                    diagnosticReported = true;
+                }
+                else if (!string.IsNullOrEmpty(suggestionsText))
                 {
                     var hookDiagnostic = Diagnostic.Create(
                         new DiagnosticDescriptor(
