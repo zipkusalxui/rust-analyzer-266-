@@ -781,6 +781,9 @@ namespace RustAnalyzer
     ""OnUserCommand(IPlayer,string,string[])"",
     ""LoadDefaultConfig()"",
     ""LoadDefaultMessages()"",
+    ""RustEdit_OnMapDataProcessed()"",
+    ""RustEdit_NPCSpawned(BasePlayer)"",
+    ""RustEdit_APCSpawned(BradleyAPC)"",
   ]
 }";
 
