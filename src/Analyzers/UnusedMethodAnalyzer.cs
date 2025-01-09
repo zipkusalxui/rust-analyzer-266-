@@ -207,12 +207,46 @@ namespace RustAnalyzer
                 return true;
             }
 
+            // Получаем все вызовы методов в текущем файле
             var root = context.Node.SyntaxTree.GetRoot(context.CancellationToken);
-            var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+            var allInvocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
 
-            foreach (var invocation in invocations)
+            // Проверяем каждый вызов метода
+            foreach (var invocation in allInvocations)
             {
                 var symbolInfo = context.SemanticModel.GetSymbolInfo(invocation);
+                
+                // Проверяем прямые вызовы
+                if (symbolInfo.Symbol != null && SymbolComparer.Equals(symbolInfo.Symbol, method))
+                {
+                    return true;
+                }
+
+                // Проверяем вызовы через generic-методы
+                if (symbolInfo.Symbol is IMethodSymbol invokedMethod && 
+                    invokedMethod.OriginalDefinition != null && 
+                    SymbolComparer.Equals(invokedMethod.OriginalDefinition, method))
+                {
+                    return true;
+                }
+            }
+
+            // Проверяем использование метода в качестве делегата или события
+            var memberAccesses = root.DescendantNodes().OfType<MemberAccessExpressionSyntax>();
+            foreach (var memberAccess in memberAccesses)
+            {
+                var symbolInfo = context.SemanticModel.GetSymbolInfo(memberAccess);
+                if (symbolInfo.Symbol != null && SymbolComparer.Equals(symbolInfo.Symbol, method))
+                {
+                    return true;
+                }
+            }
+
+            // Проверяем использование в качестве аргумента метода
+            var identifiers = root.DescendantNodes().OfType<IdentifierNameSyntax>();
+            foreach (var identifier in identifiers)
+            {
+                var symbolInfo = context.SemanticModel.GetSymbolInfo(identifier);
                 if (symbolInfo.Symbol != null && SymbolComparer.Equals(symbolInfo.Symbol, method))
                 {
                     return true;
