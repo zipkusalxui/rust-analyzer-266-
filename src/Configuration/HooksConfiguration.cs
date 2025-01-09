@@ -200,5 +200,16 @@ namespace RustAnalyzer
             { SpecialType.System_Double, "double" },
             { SpecialType.System_String, "string" }
         };
+
+        public static IEnumerable<string> GetSimilarHooks(IMethodSymbol method, int maxSuggestions = 3)
+        {
+            if (method == null || method.ContainingType == null || !IsRustPlugin(method.ContainingType))
+                return Enumerable.Empty<string>();
+
+            return StringDistance.FindSimilarShortNames(
+                method.Name,
+                _hooks.Select(h => h.HookName).Distinct(),
+                maxSuggestions);
+        }
     }
 }

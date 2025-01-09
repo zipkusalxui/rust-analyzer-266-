@@ -119,6 +119,17 @@ namespace RustAnalyzer
                 genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters));
         }
 
+        public static IEnumerable<string> GetSimilarHooks(IMethodSymbol method, int maxSuggestions = 3)
+        {
+            if (method == null || method.ContainingType == null || !IsUnityClass(method.ContainingType))
+                return Enumerable.Empty<string>();
+
+            return StringDistance.FindSimilarShortNames(
+                method.Name,
+                _hooks.Select(h => h.HookName).Distinct(),
+                maxSuggestions);
+        }
+
         private static readonly Dictionary<SpecialType, string> SpecialTypeMap = new Dictionary<SpecialType, string>
         {
             { SpecialType.System_Object, "object" },
