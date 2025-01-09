@@ -46,11 +46,61 @@ namespace RustAnalyzer
             if (methodSignature == null)
                 return false;
 
-            var methodSignatureString = methodSignature.ToString();
-           
-            var find = _hooks.Where(s => s.HookName == methodSignature.HookName).ToList();
+            // Находим все хуки с таким же именем
+            var matchingHooks = _hooks.Where(s => s.HookName == methodSignature.HookName).ToList();
 
-            return _hooks.Any(s => s.ToString().Equals(methodSignatureString));
+            foreach (var hook in matchingHooks)
+            {
+                // Проверяем количество параметров
+                if (hook.HookParameters.Count != method.Parameters.Length)
+                    continue;
+
+                bool allParametersMatch = true;
+
+                // Проверяем каждый параметр
+                for (int i = 0; i < method.Parameters.Length; i++)
+                {
+                    var methodParam = method.Parameters[i].Type;
+                    var hookParamName = hook.HookParameters[i];
+
+                    // Проверяем соответствие типов
+                    if (!IsTypeCompatible(methodParam, hookParamName))
+                    {
+                        allParametersMatch = false;
+                        break;
+                    }
+                }
+
+                if (allParametersMatch)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsTypeCompatible(ITypeSymbol type, string expectedTypeName)
+        {
+            // Проверяем точное совпадение имен
+            if (type.Name == expectedTypeName || type.ToDisplayString() == expectedTypeName)
+                return true;
+
+            // Проверяем базовые типы
+            var currentType = type;
+            while (currentType.BaseType != null)
+            {
+                currentType = currentType.BaseType;
+                if (currentType.Name == expectedTypeName || currentType.ToDisplayString() == expectedTypeName)
+                    return true;
+            }
+
+            // Проверяем интерфейсы
+            foreach (var iface in type.AllInterfaces)
+            {
+                if (iface.Name == expectedTypeName || iface.ToDisplayString() == expectedTypeName)
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -77,8 +127,6 @@ namespace RustAnalyzer
             foreach (var parameter in method.Parameters)
             {
                 var paramType = parameter.Type;
-
-                // Получаем читаемое имя типа
                 var typeString = GetFriendlyTypeName(paramType);
                 parameterTypes.Add(typeString);
             }
@@ -96,12 +144,11 @@ namespace RustAnalyzer
         {
             if (SpecialTypeMap.TryGetValue(type.SpecialType, out var friendlyName))
             {
-                return friendlyName; // Возвращаем упрощенное имя типа
+                return friendlyName;
             }
 
             if (type is INamedTypeSymbol namedType && namedType.IsGenericType)
             {
-                // Обработка обобщенных типов
                 var genericTypeName = namedType.ConstructedFrom.Name;
                 var genericArguments = namedType.TypeArguments.Select(GetFriendlyTypeName);
                 return $"{genericTypeName.Split('`')[0]}<{string.Join(", ", genericArguments)}>";
@@ -109,12 +156,10 @@ namespace RustAnalyzer
 
             if (type is IArrayTypeSymbol arrayType)
             {
-                // Обработка массивов
                 var elementType = GetFriendlyTypeName(arrayType.ElementType);
                 return $"{elementType}[]";
             }
 
-            // Если это пользовательский тип, возвращаем полное имя
             return type.ToDisplayString(new SymbolDisplayFormat(
                 typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
                 genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters));
