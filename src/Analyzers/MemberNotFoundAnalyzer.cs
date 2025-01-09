@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.Diagnostics;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Collections.Generic;
-using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 namespace RustAnalyzer
 {
@@ -33,6 +33,15 @@ namespace RustAnalyzer
 
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => 
             ImmutableArray.Create(Rule);
+
+        private static readonly string[] CommonPrefixes = new[] { "is", "get", "set", "has", "can", "should", "will", "on" };
+
+        private class SimilarMember
+        {
+            public string Name { get; set; }
+            public double Score { get; set; }
+            public string Reason { get; set; }
+        }
 
         public override void Initialize(AnalysisContext context)
         {
@@ -65,9 +74,8 @@ namespace RustAnalyzer
             }
 
             var members = GetAllMembers(typeSymbol).ToList();
-            var similarMembers = members
-                .Where(m => StringDistance.GetLevenshteinDistance(memberName, m) <= 3)
-                .OrderBy(m => StringDistance.GetLevenshteinDistance(memberName, m))
+            var similarMembers = FindSimilarMembers(memberName, members)
+                .OrderByDescending(m => m.Score)
                 .Take(3)
                 .ToList();
 
@@ -76,14 +84,84 @@ namespace RustAnalyzer
                 return;
             }
 
+            var suggestions = string.Join(", ", similarMembers.Select(m => $"{m.Name} ({m.Reason})"));
+
             var diagnostic = Diagnostic.Create(
                 Rule,
                 memberAccess.Name.GetLocation(),
                 typeSymbol.ToDisplayString(),
                 memberName,
-                string.Join(", ", similarMembers));
+                suggestions);
 
             context.ReportDiagnostic(diagnostic);
+        }
+
+        private IEnumerable<SimilarMember> FindSimilarMembers(string target, IEnumerable<string> members)
+        {
+            var results = new List<SimilarMember>();
+            var targetWords = SplitCamelCase(target);
+
+            foreach (var member in members)
+            {
+                var memberWords = SplitCamelCase(member);
+                double score = 0;
+                string reason = "";
+
+                // 1. Точное совпадение префикса
+                if (member.StartsWith(target, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    score = 1.0;
+                    reason = "completion";
+                }
+                
+                // 2. Совпадение по общим префиксам
+                else if (CommonPrefixes.Any(p => target.StartsWith(p, System.StringComparison.OrdinalIgnoreCase) 
+                    && member.StartsWith(p, System.StringComparison.OrdinalIgnoreCase)))
+                {
+                    score = 0.9;
+                    reason = "common prefix";
+                }
+
+                // 3. Совпадение по словам
+                else
+                {
+                    var commonWords = targetWords.Intersect(memberWords, System.StringComparer.OrdinalIgnoreCase).Count();
+                    if (commonWords > 0)
+                    {
+                        score = 0.7 * commonWords / System.Math.Max(targetWords.Count, memberWords.Count);
+                        reason = "similar words";
+                    }
+                }
+
+                // 4. Расстояние Левенштейна с учетом длины
+                if (score == 0)
+                {
+                    var distance = StringDistance.GetLevenshteinDistance(target, member);
+                    var maxLength = System.Math.Max(target.Length, member.Length);
+                    var similarity = 1 - (double)distance / maxLength;
+                    
+                    if (similarity > 0.5)
+                    {
+                        score = similarity * 0.5; // Понижаем вес для этой метрики
+                        reason = "similar spelling";
+                    }
+                }
+
+                if (score > 0)
+                {
+                    results.Add(new SimilarMember { Name = member, Score = score, Reason = reason });
+                }
+            }
+
+            return results;
+        }
+
+        private List<string> SplitCamelCase(string input)
+        {
+            return Regex.Split(input, @"(?<!^)(?=[A-Z])")
+                .SelectMany(s => s.Split(new[] { '_' }, System.StringSplitOptions.RemoveEmptyEntries))
+                .Where(s => !string.IsNullOrEmpty(s))
+                .ToList();
         }
 
         private IEnumerable<string> GetAllMembers(ITypeSymbol type)
