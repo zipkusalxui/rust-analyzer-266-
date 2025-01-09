@@ -794,25 +794,31 @@ namespace RustAnalyzer
         {
             try
             {
-                using var doc = JsonDocument.Parse(Json);
-                var hooks = new List<HookModel>();
-
-                foreach (var hook in doc.RootElement.GetProperty("hooks").EnumerateArray())
+                var options = new JsonSerializerOptions
                 {
-                    var hookString = hook.GetString();
-                    if (string.IsNullOrWhiteSpace(hookString))
-                    {
-                        continue;
-                    }
-                    
-                    hooks.Add(HooksUtils.ParseHookString(hookString));
-                }
+                    AllowTrailingCommas = true 
+                };
 
-                return hooks;
+                using var doc = JsonDocument.Parse(Json, new JsonDocumentOptions
+                {
+                    AllowTrailingCommas = true 
+                });
+
+                var hooksJson = doc.RootElement.GetProperty("hooks").GetRawText();
+                var hooks = JsonSerializer.Deserialize<List<string>>(hooksJson, options);
+
+                return hooks
+                    .Select(HooksUtils.ParseHookString) 
+                    .Where(h => h != null) 
+                    .ToList();
+            }
+            catch (JsonException jsonEx)
+            {
+                throw new JsonException("Failed to parse hooks from JSON", jsonEx);
             }
             catch (Exception ex)
             {
-                throw new JsonException("Failed to parse hooks from JSON", ex);
+                throw new Exception("An error occurred while processing hooks.", ex);
             }
         }
     }
