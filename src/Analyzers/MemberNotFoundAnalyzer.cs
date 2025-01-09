@@ -39,6 +39,7 @@ namespace RustAnalyzer
         private class SimilarMember
         {
             public string Name { get; set; }
+            public string DisplayName { get; set; }
             public double Score { get; set; }
             public string Reason { get; set; }
         }
@@ -73,10 +74,10 @@ namespace RustAnalyzer
                 return; // Член существует, пропускаем
             }
 
-            var members = GetAllMembers(typeSymbol).ToList();
+            var members = GetAllMembersWithSymbols(typeSymbol).ToList();
             var similarMembers = FindSimilarMembers(memberName, members)
                 .OrderByDescending(m => m.Score)
-                .Take(3)
+                .Take(6)
                 .ToList();
 
             if (!similarMembers.Any())
@@ -84,7 +85,7 @@ namespace RustAnalyzer
                 return;
             }
 
-            var suggestions = string.Join(", ", similarMembers.Select(m => $"{m.Name} ({m.Reason})"));
+            var suggestions = string.Join(", ", similarMembers.Select(m => $"{m.DisplayName} ({m.Reason})"));
 
             var diagnostic = Diagnostic.Create(
                 Rule,
@@ -96,19 +97,19 @@ namespace RustAnalyzer
             context.ReportDiagnostic(diagnostic);
         }
 
-        private IEnumerable<SimilarMember> FindSimilarMembers(string target, IEnumerable<string> members)
+        private IEnumerable<SimilarMember> FindSimilarMembers(string target, IEnumerable<(string Name, ISymbol Symbol)> members)
         {
             var results = new List<SimilarMember>();
             var targetWords = SplitCamelCase(target);
 
-            foreach (var member in members)
+            foreach (var (memberName, symbol) in members)
             {
-                var memberWords = SplitCamelCase(member);
+                var memberWords = SplitCamelCase(memberName);
                 double score = 0;
                 string reason = "";
 
                 // 1. Точное совпадение префикса
-                if (member.StartsWith(target, System.StringComparison.OrdinalIgnoreCase))
+                if (memberName.StartsWith(target, System.StringComparison.OrdinalIgnoreCase))
                 {
                     score = 1.0;
                     reason = "completion";
@@ -116,7 +117,7 @@ namespace RustAnalyzer
                 
                 // 2. Совпадение по общим префиксам
                 else if (CommonPrefixes.Any(p => target.StartsWith(p, System.StringComparison.OrdinalIgnoreCase) 
-                    && member.StartsWith(p, System.StringComparison.OrdinalIgnoreCase)))
+                    && memberName.StartsWith(p, System.StringComparison.OrdinalIgnoreCase)))
                 {
                     score = 0.9;
                     reason = "common prefix";
@@ -136,8 +137,8 @@ namespace RustAnalyzer
                 // 4. Расстояние Левенштейна с учетом длины
                 if (score == 0)
                 {
-                    var distance = StringDistance.GetLevenshteinDistance(target, member);
-                    var maxLength = System.Math.Max(target.Length, member.Length);
+                    var distance = StringDistance.GetLevenshteinDistance(target, memberName);
+                    var maxLength = System.Math.Max(target.Length, memberName.Length);
                     var similarity = 1 - (double)distance / maxLength;
                     
                     if (similarity > 0.5)
@@ -149,11 +150,48 @@ namespace RustAnalyzer
 
                 if (score > 0)
                 {
-                    results.Add(new SimilarMember { Name = member, Score = score, Reason = reason });
+                    var displayName = GetDisplayName(symbol);
+                    results.Add(new SimilarMember { 
+                        Name = memberName, 
+                        DisplayName = displayName,
+                        Score = score, 
+                        Reason = reason 
+                    });
                 }
             }
 
             return results;
+        }
+
+        private string GetDisplayName(ISymbol symbol)
+        {
+            if (symbol is IMethodSymbol method)
+            {
+                var parameters = string.Join(", ", method.Parameters.Select(p => $"{p.Type.Name} {p.Name}"));
+                return $"{method.Name}({parameters})";
+            }
+            return symbol.Name;
+        }
+
+        private IEnumerable<(string Name, ISymbol Symbol)> GetAllMembersWithSymbols(ITypeSymbol type)
+        {
+            var members = type.GetMembers()
+                .Where(m => m.DeclaredAccessibility == Accessibility.Public)
+                .Select(m => (m.Name, Symbol: m));
+
+            if (type.BaseType != null)
+            {
+                members = members.Concat(GetAllMembersWithSymbols(type.BaseType));
+            }
+
+            foreach (var iface in type.AllInterfaces)
+            {
+                members = members.Concat(GetAllMembersWithSymbols(iface));
+            }
+
+            return members
+                .GroupBy(m => m.Name)
+                .Select(g => g.First());
         }
 
         private List<string> SplitCamelCase(string input)
@@ -162,26 +200,6 @@ namespace RustAnalyzer
                 .SelectMany(s => s.Split(new[] { '_' }, System.StringSplitOptions.RemoveEmptyEntries))
                 .Where(s => !string.IsNullOrEmpty(s))
                 .ToList();
-        }
-
-        private IEnumerable<string> GetAllMembers(ITypeSymbol type)
-        {
-            var members = type.GetMembers()
-                .Where(m => m.DeclaredAccessibility == Accessibility.Public)
-                .Select(m => m.Name)
-                .Distinct();
-
-            if (type.BaseType != null)
-            {
-                members = members.Concat(GetAllMembers(type.BaseType));
-            }
-
-            foreach (var iface in type.AllInterfaces)
-            {
-                members = members.Concat(GetAllMembers(iface));
-            }
-
-            return members.Distinct();
         }
     }
 } 
