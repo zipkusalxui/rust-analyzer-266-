@@ -139,9 +139,8 @@ namespace RustAnalyzer
                 }
 
                 // Get similar hook suggestions
-                var similarHooks = HooksConfiguration.GetSimilarHooks(methodSymbol)
-                    .Concat(UnityHooksConfiguration.GetSimilarHooks(methodSymbol))
-                    .Take(3);
+                var similarHooks = HooksConfiguration.GetSimilarHooks(methodSymbol, 3)
+                    .Concat(UnityHooksConfiguration.GetSimilarHooks(methodSymbol, 3));
                     
                 var suggestionsText = string.Join(", ", similarHooks);
                 
