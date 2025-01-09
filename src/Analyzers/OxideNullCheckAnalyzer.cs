@@ -14,13 +14,13 @@ namespace OxideAnalyzers
         public const string DiagnosticId = "OXD001";
 
         private static readonly LocalizableString Title = 
-            "Property should be checked for null";
+            "Object should be checked for null before use";
 
         private static readonly LocalizableString MessageFormat = 
-            "Property '{0}' at line {1} should be checked for null before use";
+            "'{0}' at line {1} should be checked for null before use";
 
         private static readonly LocalizableString Description = 
-            "Properties in Oxide/uMod plugins should be checked for null to prevent NullReferenceException.";
+            "Objects in Oxide/uMod plugins should be checked for null before accessing their members to prevent NullReferenceException.";
 
         private const string Category = "Usage";
 
@@ -52,10 +52,6 @@ namespace OxideAnalyzers
             
             if (methodSymbol == null) return;
 
-            if (!HooksConfiguration.IsHook(methodSymbol) && 
-                !PluginHooksConfiguration.IsHook(methodSymbol))
-                return;
-
             var parameters = methodDeclaration.ParameterList.Parameters;
             
             foreach (var parameter in parameters)
@@ -66,7 +62,7 @@ namespace OxideAnalyzers
                 if (parameterType.Type == null || parameterType.Type.IsValueType)
                     continue;
 
-                // Находим все обращения к свойствам параметра
+                // Находим все обращения к параметру (методы и свойства)
                 var memberAccesses = methodDeclaration.DescendantNodes()
                     .OfType<MemberAccessExpressionSyntax>()
                     .Where(ma => 
@@ -79,8 +75,8 @@ namespace OxideAnalyzers
                         // Получаем символ члена
                         var memberSymbol = context.SemanticModel.GetSymbolInfo(ma).Symbol;
                         
-                        // Проверяем что это свойство или поле, а не метод
-                        return memberSymbol is IPropertySymbol || memberSymbol is IFieldSymbol;
+                        // Проверяем все члены (методы, свойства, поля)
+                        return memberSymbol != null;
                     })
                     .ToList();
 
@@ -108,6 +104,7 @@ namespace OxideAnalyzers
                         condition.Contains($"{parameter.Identifier.Text} == null") ||
                         condition.Contains($"{parameter.Identifier.Text}?.") ||
                         condition.Contains($"{parameter.Identifier.Text} is null") ||
+                        condition.Contains($"!{parameter.Identifier.Text}.IsValid()") ||  // Добавляем проверку IsValid()
                         condition.Contains($"{parameter.Identifier.Text}.{memberName} == null") ||
                         condition.Contains($"{parameter.Identifier.Text}?.{memberName}") ||
                         condition.Contains($"{parameter.Identifier.Text}.{memberName} is null")))
@@ -125,6 +122,7 @@ namespace OxideAnalyzers
                                 if (condition.Contains($"{parameter.Identifier.Text} == null") ||
                                     condition.Contains($"{parameter.Identifier.Text}?.") ||
                                     condition.Contains($"{parameter.Identifier.Text} is null") ||
+                                    condition.Contains($"!{parameter.Identifier.Text}.IsValid()") ||  // Добавляем проверку IsValid()
                                     condition.Contains($"{parameter.Identifier.Text}.{memberName} == null") ||
                                     condition.Contains($"{parameter.Identifier.Text}?.{memberName}") ||
                                     condition.Contains($"{parameter.Identifier.Text}.{memberName} is null"))
