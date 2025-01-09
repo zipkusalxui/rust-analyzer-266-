@@ -38,7 +38,7 @@ namespace RustAnalyzer
         /// </summary>
         public static bool IsHook(IMethodSymbol method)
         {
-            if (method == null)
+            if (method == null || method.ContainingType == null || !IsRustPlugin(method.ContainingType))
                 return false;
 
             var methodSignature = GetMethodSignature(method);
@@ -78,6 +78,23 @@ namespace RustAnalyzer
             return false;
         }
 
+        private static bool IsRustPlugin(INamedTypeSymbol typeSymbol)
+        {
+
+            while (typeSymbol != null)
+            {
+                var currentName = typeSymbol.ToDisplayString();
+                if (currentName == "Oxide.Core.Plugins.Plugin" ||
+                    currentName == "Oxide.Plugins.RustPlugin" ||
+                    currentName == "Oxide.Plugins.CovalencePlugin")
+                {
+                    return true;
+                }
+                typeSymbol = typeSymbol.BaseType;
+            }
+            return false;
+        }
+        
         private static bool IsTypeCompatible(ITypeSymbol type, string expectedTypeName)
         {
             // Проверяем точное совпадение имен
@@ -109,7 +126,7 @@ namespace RustAnalyzer
         /// </summary>
         public static bool IsKnownHook(IMethodSymbol method)
         {
-            if (method == null)
+            if (method == null || method.ContainingType == null || !IsRustPlugin(method.ContainingType))
                 return false;
 
             var methodSignature = GetMethodSignature(method);

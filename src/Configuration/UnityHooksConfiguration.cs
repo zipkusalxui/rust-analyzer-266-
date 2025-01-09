@@ -38,38 +38,25 @@ namespace RustAnalyzer
         /// </summary>
         public static bool IsHook(IMethodSymbol method)
         {
-            if (method == null)
+            if (method == null || method.ContainingType == null || !IsUnityClass(method.ContainingType))
                 return false;
 
             var methodSignature = GetMethodSignature(method);
-
-            if (methodSignature == null)
-                return false;
-
-            var methodSignatureString = methodSignature.ToString();
-           
-            var find = _hooks.Where(s => s.HookName == methodSignature.HookName).ToList();
-
-            return _hooks.Any(s => s.ToString().Equals(methodSignatureString));
-        }
-
-        /// <summary>
-        /// Checks if a given method signature exactly matches a known hook signature.
-        /// This method requires the full signature to match.
-        /// </summary>
-        public static bool IsKnownHook(IMethodSymbol method)
-        {
-            if (method == null)
-                return false;
-
-            var methodSignature = GetMethodSignature(method);
-
-            if (methodSignature == null)
-                return false;
+            if (methodSignature == null) return false;
 
             return _hooks.Any(s => s.HookName == methodSignature.HookName);
         }
 
+        private static bool IsUnityClass(INamedTypeSymbol typeSymbol)
+        {
+            while (typeSymbol != null)
+            {
+                if (typeSymbol.ToDisplayString() == "UnityEngine.MonoBehaviour")
+                    return true;
+                typeSymbol = typeSymbol.BaseType;
+            }
+            return false;
+        }
         private static HookModel GetMethodSignature(IMethodSymbol method)
         {
             List<string> parameterTypes = new List<string>();
@@ -77,8 +64,6 @@ namespace RustAnalyzer
             foreach (var parameter in method.Parameters)
             {
                 var paramType = parameter.Type;
-
-                // Получаем читаемое имя типа
                 var typeString = GetFriendlyTypeName(paramType);
                 parameterTypes.Add(typeString);
             }
@@ -96,12 +81,11 @@ namespace RustAnalyzer
         {
             if (SpecialTypeMap.TryGetValue(type.SpecialType, out var friendlyName))
             {
-                return friendlyName; // Возвращаем упрощенное имя типа
+                return friendlyName;
             }
 
             if (type is INamedTypeSymbol namedType && namedType.IsGenericType)
             {
-                // Обработка обобщенных типов
                 var genericTypeName = namedType.ConstructedFrom.Name;
                 var genericArguments = namedType.TypeArguments.Select(GetFriendlyTypeName);
                 return $"{genericTypeName.Split('`')[0]}<{string.Join(", ", genericArguments)}>";
@@ -109,12 +93,10 @@ namespace RustAnalyzer
 
             if (type is IArrayTypeSymbol arrayType)
             {
-                // Обработка массивов
                 var elementType = GetFriendlyTypeName(arrayType.ElementType);
                 return $"{elementType}[]";
             }
 
-            // Если это пользовательский тип, возвращаем полное имя
             return type.ToDisplayString(new SymbolDisplayFormat(
                 typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
                 genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters));
