@@ -205,8 +205,47 @@ namespace RustAnalyzer.Models
                 ""HookName"": ""OnUnbannedIP"",
                 ""HookParameters"": [""string"", ""BasePlayer""],
                 ""PluginName"": ""IQBanSystem""
+            },
+            {
+                ""HookName"": ""OnTeleportInterrupted"",
+                ""HookParameters"": [""BasePlayer"", ""string"", ""ulong"", ""string""],
+                ""PluginName"": ""NTeleportation""
+            },
+            {
+                ""HookName"": ""OnHomeAdded"",
+                ""HookParameters"": [""BasePlayer"", ""Vector3"", ""string""],
+                ""PluginName"": ""NTeleportation""
+            },
+            {
+                ""HookName"": ""OnHomeRemoved"",
+                ""HookParameters"": [""BasePlayer"", ""Vector3"", ""string""],
+                ""PluginName"": ""NTeleportation""
+            },
+            {
+                ""HookName"": ""OnHomeAccepted"",
+                ""HookParameters"": [""BasePlayer"", ""string"", ""int""],
+                ""PluginName"": ""NTeleportation""
+            },
+            {
+                ""HookName"": ""OnTeleportAccepted"",
+                ""HookParameters"": [""BasePlayer"", ""BasePlayer"", ""int""],
+                ""PluginName"": ""NTeleportation""
+            },
+            {
+                ""HookName"": ""OnTeleportRequestCompleted"",
+                ""HookParameters"": [""BasePlayer"", ""BasePlayer""],
+                ""PluginName"": ""NTeleportation""
+            },
+            {
+                ""HookName"": ""OnTeleportRejected"",
+                ""HookParameters"": [""BasePlayer"", ""BasePlayer""],
+                ""PluginName"": ""NTeleportation""
+            },
+            {
+                ""HookName"": ""OnPlayerTeleported"",
+                ""HookParameters"": [""BasePlayer"", ""Vector3"", ""Vector3""],
+                ""PluginName"": ""NTeleportation""
             }
-            
         ]";
 
         public static List<PluginHookModel> GetHooks()
