@@ -245,7 +245,144 @@ namespace RustAnalyzer.Models
                 ""HookName"": ""OnPlayerTeleported"",
                 ""HookParameters"": [""BasePlayer"", ""Vector3"", ""Vector3""],
                 ""PluginName"": ""NTeleportation""
+            },
+
+            {
+                ""HookName"": ""StartRaidBlocking"",
+                ""HookParameters"": [""BasePlayer"", ""Vector3"", ""bool""],
+                ""PluginName"": ""NoEscape""
+            },
+            {
+                ""HookName"": ""StopBlocking"",
+                ""HookParameters"": [""BasePlayer""],
+                ""PluginName"": ""NoEscape""
+            },
+            {
+                ""HookName"": ""StopRaidBlocking"",
+                ""HookParameters"": [""string""],
+                ""PluginName"": ""NoEscape""
+            },
+            {
+                ""HookName"": ""StartCombatBlocking"",
+                ""HookParameters"": [""BasePlayer""],
+                ""PluginName"": ""NoEscape""
+            },
+            {
+                ""HookName"": ""StopCombatBlocking"",
+                ""HookParameters"": [""string""],
+                ""PluginName"": ""NoEscape""
+            },
+
+            {
+                ""HookName"": ""API_AddOnlinePrisoner"",
+                ""HookParameters"": [""BasePlayer"", ""bool"", ""int""],
+                ""PluginName"": ""XPrison""
+            },
+            {
+                ""HookName"": ""API_RemoveOnlinePrisoner"",
+                ""HookParameters"": [""BasePlayer""],
+                ""PluginName"": ""XPrison""
+            },
+            {
+                ""HookName"": ""API_AddOfflinePrisoner"",
+                ""HookParameters"": [""BasePlayer"", ""bool"", ""int""],
+                ""PluginName"": ""XPrison""
+            },
+            {
+                ""HookName"": ""API_RemoveOfflinePrisoner"",
+                ""HookParameters"": [""ulong""],
+                ""PluginName"": ""XPrison""
+            },
+
+            {
+                ""HookName"": ""OnQuestCompleted"",
+                ""HookParameters"": [""BasePlayer"", ""string""],
+                ""PluginName"": ""XDQuest""
+            },
+            {
+                ""HookName"": ""OnQuestProgress"",
+                ""HookParameters"": [""ulong"", ""QuestType"", ""string"", ""string"", ""List<Item>"", ""int""],
+                ""PluginName"": ""XDQuest""
+            },
+
+            {
+                ""HookName"": ""API_SET_BALANCE"",
+                ""HookParameters"": [""string"", ""int"", ""ItemContainer""],
+                ""PluginName"": ""IQEconomic""
+            },
+            {
+                ""HookName"": ""API_SET_BALANCE"",
+                ""HookParameters"": [""ulong"", ""int"", ""ItemContainer""],
+                ""PluginName"": ""IQEconomic""
+            },
+            {
+                ""HookName"": ""API_SET_BALANCE"",
+                ""HookParameters"": [""BasePlayer"", ""int"", ""ItemContainer""],
+                ""PluginName"": ""IQEconomic""
+            },
+            {
+                ""HookName"": ""API_REMOVE_BALANCE"",
+                ""HookParameters"": [""string"", ""int""],
+                ""PluginName"": ""IQEconomic""
+            },
+            {
+                ""HookName"": ""API_REMOVE_BALANCE"",
+                ""HookParameters"": [""BasePlayer"", ""int""],
+                ""PluginName"": ""IQEconomic""
+            },
+            {
+                ""HookName"": ""API_REMOVE_BALANCE"",
+                ""HookParameters"": [""ulong"", ""int""],
+                ""PluginName"": ""IQEconomic""
+            },
+            {
+                ""HookName"": ""API_TRANSFERS"",
+                ""HookParameters"": [""ulong"", ""ulong"", ""int""],
+                ""PluginName"": ""IQEconomic""
+            },
+            {
+                ""HookName"": ""API_TRANSFERS"",
+                ""HookParameters"": [""BasePlayer"", ""BasePlayer"", ""int""],
+                ""PluginName"": ""IQEconomic""
+            },
+            {
+                ""HookName"": ""API_TRANSFERS"",
+                ""HookParameters"": [""string"", ""string"", ""int""],
+                ""PluginName"": ""IQEconomic""
+            },
+            {
+                ""HookName"": ""API_TRANSFERS"",
+                ""HookParameters"": [""ulong"", ""string"", ""int""],
+                ""PluginName"": ""IQEconomic""
+            },
+            {
+                ""HookName"": ""API_TRANSFERS"",
+                ""HookParameters"": [""string"", ""ulong"", ""int""],
+                ""PluginName"": ""IQEconomic""
+            },
+            {
+                ""HookName"": ""API_TRANSFERS"",
+                ""HookParameters"": [""BasePlayer"", ""ulong"", ""int""],
+                ""PluginName"": ""IQEconomic""
+            },
+            {
+                ""HookName"": ""API_TRANSFERS"",
+                ""HookParameters"": [""BasePlayer"", ""string"", ""int""],
+                ""PluginName"": ""IQEconomic""
+            },
+            {
+                ""HookName"": ""API_TRANSFERS"",
+                ""HookParameters"": [""ulong"", ""BasePlayer"", ""int""],
+                ""PluginName"": ""IQEconomic""
+            },
+            {
+                ""HookName"": ""API_TRANSFERS"",
+                ""HookParameters"": [""string"", ""BasePlayer"", ""int""],
+                ""PluginName"": ""IQEconomic""
             }
+
+
+
         ]";
 
         public static List<PluginHookModel> GetHooks()
