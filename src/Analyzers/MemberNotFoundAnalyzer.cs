@@ -178,11 +178,26 @@ namespace RustAnalyzer
 
         private string FormatMemberSuggestion(ISymbol symbol)
         {
-            // For methods, include their signatures
+            // For methods, include their return type and signatures
             if (symbol is IMethodSymbol methodSymbol)
             {
+                string returnType = methodSymbol.ReturnType.ToDisplayString();
                 string parameters = string.Join(", ", methodSymbol.Parameters.Select(p => $"{p.Type.ToDisplayString()} {p.Name}"));
-                return $"           - `{methodSymbol.Name}({parameters})`";
+                return $"           - `{returnType} {methodSymbol.Name}({parameters})`";
+            }
+
+            // For properties, include their type
+            if (symbol is IPropertySymbol propertySymbol)
+            {
+                string propertyType = propertySymbol.Type.ToDisplayString();
+                return $"           - `{propertyType} {propertySymbol.Name}`";
+            }
+
+            // For fields, include their type
+            if (symbol is IFieldSymbol fieldSymbol)
+            {
+                string fieldType = fieldSymbol.Type.ToDisplayString();
+                return $"           - `{fieldType} {fieldSymbol.Name}`";
             }
 
             // For other members, just return their name
@@ -191,7 +206,7 @@ namespace RustAnalyzer
 
         private bool IsCompilerGenerated(ISymbol symbol)
         {
-            // Exclude compiler-generated members
+            // Exclude compiler-generated members (e.g., backing fields, display classes)
             return symbol.Name.StartsWith("<") && symbol.Name.EndsWith(">");
         }
 
