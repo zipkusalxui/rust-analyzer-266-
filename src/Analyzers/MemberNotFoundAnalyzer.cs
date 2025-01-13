@@ -10,10 +10,16 @@ using System.Linq;
 
 namespace RustAnalyzer
 {
+    /// <summary>
+    /// Analyzer that detects attempts to use non-existent members on types.
+    /// </summary>
+    /// <remarks>
+    /// See the full documentation at <see href="https://github.com/publicrust/rust-analyzer/blob/main/docs/RUST006.md">RUST006: Member Not Found</see>
+    /// </remarks>
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
     public class MemberNotFoundAnalyzer : DiagnosticAnalyzer
     {
-        public const string DiagnosticId = "RUST004";
+        public const string DiagnosticId = "RUST006";
         private const string Category = "Usage";
 
         private static readonly LocalizableString Title = "Member not found";
