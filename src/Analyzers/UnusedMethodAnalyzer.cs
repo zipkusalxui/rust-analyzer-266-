@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis.Diagnostics;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Collections.Generic;
+using RustAnalyzer.Utils;
 
 namespace RustAnalyzer
 {

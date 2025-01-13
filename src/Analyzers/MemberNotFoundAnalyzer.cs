@@ -2,11 +2,10 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using RustAnalyzer.Utils;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
-using System.Collections.Generic;
-using System.Text.RegularExpressions;
-using System.Diagnostics;
 
 namespace RustAnalyzer
 {
@@ -18,8 +17,16 @@ namespace RustAnalyzer
 
         private static readonly LocalizableString Title = "Member not found";
         private static readonly LocalizableString MessageFormat =
-            "{0} does not contain a definition for '{1}'.\n" +
-            "Similar members found: {2}";
+            "error[E0599]: no {0} named `{1}` found for type `{2}` in the current scope\n" +
+            "  --> {4}:{5}:{6}\n" +
+            "   |\n" +
+            "{5,2} | {7}\n" + // Source line
+            "   | {8} {0} not found in `{2}`\n" + // Pointer and explanation
+            "   |\n" +
+            "   = note: the type `{2}` does not have a {0} named `{1}`\n" +
+            "   = help: did you mean one of these?\n" +
+            "{3}";
+
         private static readonly LocalizableString Description =
             "The member was not found, but there are similar members available.";
 
@@ -35,22 +42,13 @@ namespace RustAnalyzer
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
             ImmutableArray.Create(Rule);
 
-        private static readonly string[] CommonPrefixes = new[] { "is", "get", "set", "has", "can", "should", "will", "on" };
-
-        private class SimilarMember
-        {
-            public string Name { get; set; }
-            public string DisplayName { get; set; }
-            public double Score { get; set; }
-            public string Reason { get; set; }
-        }
-
         public override void Initialize(AnalysisContext context)
         {
+            if (context == null) return;
+
             context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
             context.EnableConcurrentExecution();
 
-            // Теперь подписываемся на MemberAccessExpression
             context.RegisterSyntaxNodeAction(AnalyzeMemberAccess, SyntaxKind.SimpleMemberAccessExpression);
         }
 
@@ -63,191 +61,94 @@ namespace RustAnalyzer
             var typeSymbol = expressionInfo.Type;
             var memberName = memberAccess.Name.Identifier.ValueText;
 
-            Debug.WriteLine($"Analyzing member access: {memberName} in type {typeSymbol?.ToDisplayString() ?? "null"}");
             if (typeSymbol == null)
-            {
-                Debug.WriteLine("Type symbol is null, skipping");
                 return;
-            }
 
-            // Проверяем, не существует ли уже символ (тогда всё нормально)
             var symbol = semanticModel.GetSymbolInfo(memberAccess.Name).Symbol;
             if (symbol != null)
-            {
-                Debug.WriteLine($"Member {memberName} exists, skipping");
                 return;
-            }
 
-            // Ищем объявление класса
-            var classDeclaration = memberAccess.FirstAncestorOrSelf<ClassDeclarationSyntax>();
-            if (classDeclaration == null)
-            {
-                Debug.WriteLine("Class declaration not found, skipping");
-                return;
-            }
-            Debug.WriteLine($"Class name: {classDeclaration.Identifier.Text}");
-
-            // Смотрим, есть ли такой метод в данном классе
-            var methodsInClass = classDeclaration.Members
-                .OfType<MethodDeclarationSyntax>()
-                .Where(m => m.Identifier.Text == memberName)
+            // Retrieve all members of the type and filter out compiler-generated fields
+            var members = typeSymbol.GetMembers()
+                .Where(m => !(m is IFieldSymbol field && field.Name.StartsWith("<") && field.Name.EndsWith(">k__BackingField")))
+                .Select(m => m.Name)
                 .ToList();
 
-            Debug.WriteLine($"Found {methodsInClass.Count} methods with name {memberName} in class {classDeclaration.Identifier.Text}");
+            // Find similar members
+            var suggestions = FindSimilarMembers(memberName, members);
 
-            // Если метод существует, значит это ложная тревога
-            if (methodsInClass.Count > 0)
-            {
-                Debug.WriteLine("Method exists in class, so skipping any error reports");
-                return;
-            }
+            // If no suggestions are found, add a fallback message
+            if (string.IsNullOrEmpty(suggestions))
+                suggestions = "           - (no similar members)";
 
-            // Иначе ищем похожие члены (все доступные, не только public)
-            var members = GetAllMembersWithSymbols(typeSymbol, semanticModel, context.Node.SpanStart).ToList();
-            Debug.WriteLine($"Found {members.Count} members in type {typeSymbol}");
+            // Get the location and line information
+            var location = memberAccess.Name.GetLocation();
+            var lineSpan = location.GetLineSpan();
+            var startLinePosition = lineSpan.StartLinePosition;
 
-            var similarMembers = FindSimilarMembers(memberName, members)
-                .OrderByDescending(m => m.Score)
-                .Take(6)
-                .ToList();
+            var sourceText = location.SourceTree?.GetText();
+            if (sourceText == null) return;
 
-            Debug.WriteLine($"Found {similarMembers.Count} similar members");
-            foreach (var member in similarMembers)
-            {
-                Debug.WriteLine($"Similar member: {member.DisplayName} (score: {member.Score}, reason: {member.Reason})");
-            }
+            var lineText = sourceText.Lines[startLinePosition.Line].ToString();
 
-            if (!similarMembers.Any())
-            {
-                Debug.WriteLine("No similar members found, skipping");
-                return;
-            }
+            // Compute visual column and create the pointer line
+            int charColumn = startLinePosition.Character;
+            int visualColumn = TextAlignmentUtils.ComputeVisualColumn(lineText, charColumn);
+            string pointerLine = TextAlignmentUtils.CreatePointerLine(lineText, charColumn, memberName.Length);
 
-            var suggestions = string.Join(", ", similarMembers.Select(m => $"{m.DisplayName} ({m.Reason})"));
-            Debug.WriteLine($"Reporting diagnostic with suggestions: {suggestions}");
+            // Retrieve the file name
+            var fileName = System.IO.Path.GetFileName(location.SourceTree?.FilePath ?? string.Empty);
 
+            // Create the diagnostic
             var diagnostic = Diagnostic.Create(
                 Rule,
-                memberAccess.Name.GetLocation(),
-                typeSymbol.ToDisplayString(),
-                memberName,
-                suggestions);
+                location,
+                DetermineMemberKind(memberAccess, semanticModel), // {0} - "method", "property", etc.
+                memberName,                                       // {1} - Member name
+                typeSymbol.ToDisplayString(),                    // {2} - Type where the member is missing
+                suggestions,                                     // {3} - Similar members
+                fileName,                                        // {4} - File name
+                startLinePosition.Line + 1,                      // {5} - Line number
+                charColumn + 1,                                  // {6} - Column number
+                lineText,                                        // {7} - Source line
+                pointerLine                                      // {8} - Pointer line
+            );
 
             context.ReportDiagnostic(diagnostic);
         }
 
-        /// <summary>
-        /// Собираем все члены (поля, методы, свойства и т.д.), которые доступны из позиции position.
-        /// </summary>
-        private IEnumerable<(string Name, ISymbol Symbol)> GetAllMembersWithSymbols(
-            ITypeSymbol type,
-            SemanticModel semanticModel,
-            int position)
+        private string DetermineMemberKind(MemberAccessExpressionSyntax memberAccess, SemanticModel semanticModel)
         {
-            // Берём всех членов типа, которые доступны из данной точки
-            var members = type.GetMembers()
-                .Where(m => semanticModel.IsAccessible(position, m))
-                .Select(m => (m.Name, Symbol: m));
+            if (memberAccess.Parent is InvocationExpressionSyntax)
+                return "method";
 
-            // Рекурсивно идём по базовым классам
-            if (type.BaseType != null)
-            {
-                members = members.Concat(GetAllMembersWithSymbols(type.BaseType, semanticModel, position));
-            }
+            var binding = semanticModel.GetSymbolInfo(memberAccess);
+            if (binding.CandidateSymbols.Any(s => s is IMethodSymbol))
+                return "method";
+            if (binding.CandidateSymbols.Any(s => s is IPropertySymbol))
+                return "property";
+            if (binding.CandidateSymbols.Any(s => s is IFieldSymbol))
+                return "field";
 
-            // И по всем интерфейсам
-            foreach (var iface in type.AllInterfaces)
-            {
-                members = members.Concat(GetAllMembersWithSymbols(iface, semanticModel, position));
-            }
-
-            // Убираем дубли по имени
-            return members
-                .GroupBy(m => m.Name)
-                .Select(g => g.First());
+            return "member";
         }
 
-        private IEnumerable<SimilarMember> FindSimilarMembers(string target, IEnumerable<(string Name, ISymbol Symbol)> members)
+        private string FindSimilarMembers(string targetName, List<string> members)
         {
-            var results = new List<SimilarMember>();
-            var targetWords = SplitCamelCase(target);
-
-            foreach (var (memberName, symbol) in members)
-            {
-                var memberWords = SplitCamelCase(memberName);
-                double score = 0;
-                string reason = "";
-
-                // 1. Точное совпадение префикса
-                if (memberName.StartsWith(target, System.StringComparison.OrdinalIgnoreCase))
-                {
-                    score = 1.0;
-                    reason = "completion";
-                }
-                // 2. Совпадение по общим префиксам
-                else if (CommonPrefixes.Any(p =>
-                    target.StartsWith(p, System.StringComparison.OrdinalIgnoreCase) &&
-                    memberName.StartsWith(p, System.StringComparison.OrdinalIgnoreCase)))
-                {
-                    score = 0.9;
-                    reason = "common prefix";
-                }
-                // 3. Совпадение по словам (camelCase)
-                else
-                {
-                    var commonWords = targetWords.Intersect(memberWords, System.StringComparer.OrdinalIgnoreCase).Count();
-                    if (commonWords > 0)
-                    {
-                        score = 0.7 * commonWords / System.Math.Max(targetWords.Count, memberWords.Count);
-                        reason = "similar words";
-                    }
-                }
-
-                // 4. Расстояние Левенштейна
-                if (score == 0)
-                {
-                    var distance = StringDistance.GetLevenshteinDistance(target, memberName);
-                    var maxLength = System.Math.Max(target.Length, memberName.Length);
-                    var similarity = 1 - (double)distance / maxLength;
-
-                    if (similarity > 0.5)
-                    {
-                        score = similarity * 0.5;
-                        reason = "similar spelling";
-                    }
-                }
-
-                if (score > 0)
-                {
-                    var displayName = GetDisplayName(symbol);
-                    results.Add(new SimilarMember
-                    {
-                        Name = memberName,
-                        DisplayName = displayName,
-                        Score = score,
-                        Reason = reason
-                    });
-                }
-            }
-            return results;
-        }
-
-        private string GetDisplayName(ISymbol symbol)
-        {
-            if (symbol is IMethodSymbol method)
-            {
-                var parameters = string.Join(", ", method.Parameters.Select(p => $"{p.Type.Name} {p.Name}"));
-                return $"{method.Name}({parameters})";
-            }
-            return symbol.Name;
-        }
-
-        private List<string> SplitCamelCase(string input)
-        {
-            return Regex.Split(input, @"(?<!^)(?=[A-Z])")
-                .SelectMany(s => s.Split(new[] { '_' }, System.StringSplitOptions.RemoveEmptyEntries))
-                .Where(s => !string.IsNullOrEmpty(s))
+            // Find similar members using substring matching and Levenshtein distance
+            var similarMembers = members
+                .Where(m => IsSimilar(targetName, m))
+                .Select(m => $"           - `{m}`")
                 .ToList();
+
+            return string.Join("\n", similarMembers);
+        }
+
+        private bool IsSimilar(string target, string candidate)
+        {
+            // Check for substring match or a close match based on Levenshtein distance
+            return candidate.IndexOf(target, System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   StringDistance.GetLevenshteinDistance(target, candidate) <= 3;
         }
     }
 }

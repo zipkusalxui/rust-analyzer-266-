@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace RustAnalyzer
+namespace RustAnalyzer.Utils
 {
     public static class StringDistance
     {
