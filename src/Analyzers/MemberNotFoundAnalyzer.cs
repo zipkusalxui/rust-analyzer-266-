@@ -17,7 +17,7 @@ namespace RustAnalyzer
         private const string Category = "Usage";
 
         private static readonly LocalizableString Title = "Member not found";
-        private static readonly LocalizableString MessageFormat =
+        private static readonly string MessageFormatTemplate =
             "error[E0599]: no {0} named `{1}` found for type `{2}` in the current scope\n" +
             "  --> {4}:{5}:{6}\n" +
             "   |\n" +
@@ -28,17 +28,13 @@ namespace RustAnalyzer
             "   = help: did you mean one of these?\n" +
             "{3}";
 
-        private static readonly LocalizableString Description =
-            "The member was not found, but there are similar members available.";
-
         private static readonly DiagnosticDescriptor Rule = new DiagnosticDescriptor(
             DiagnosticId,
             Title,
-            MessageFormat,
+            "{0}", // Placeholder for dynamic description
             Category,
             DiagnosticSeverity.Error,
-            isEnabledByDefault: true,
-            description: Description);
+            isEnabledByDefault: true);
 
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
             ImmutableArray.Create(Rule);
@@ -104,19 +100,34 @@ namespace RustAnalyzer
             // Retrieve the file name
             var fileName = System.IO.Path.GetFileName(nameLocation.SourceTree?.FilePath ?? string.Empty);
 
+            // Create the filled message format for description
+            var dynamicDescription = string.Format(
+                MessageFormatTemplate,
+                DetermineMemberKind(memberAccess, semanticModel), // {0}
+                memberName,                                       // {1}
+                typeSymbol.ToDisplayString(),                    // {2}
+                suggestions,                                     // {3}
+                fileName,                                        // {4}
+                startLinePosition.Line + 1,                      // {5}
+                charColumn + 1,                                  // {6}
+                lineText,                                        // {7}
+                pointerLine                                      // {8}
+            );
+
             // Create the diagnostic
             var diagnostic = Diagnostic.Create(
                 Rule,
                 nameLocation,
-                DetermineMemberKind(memberAccess, semanticModel), // {0} - "method", "property", etc.
-                memberName,                                       // {1} - Member name
-                typeSymbol.ToDisplayString(),                    // {2} - Type where the member is missing
-                suggestions,                                     // {3} - Similar members
-                fileName,                                        // {4} - File name
-                startLinePosition.Line + 1,                      // {5} - Line number
-                charColumn + 1,                                  // {6} - Column number
-                lineText,                                        // {7} - Source line
-                pointerLine                                      // {8} - Pointer line
+                dynamicDescription,
+                DetermineMemberKind(memberAccess, semanticModel), // {0}
+                memberName,                                       // {1}
+                typeSymbol.ToDisplayString(),                    // {2}
+                suggestions,                                     // {3}
+                fileName,                                        // {4}
+                startLinePosition.Line + 1,                      // {5}
+                charColumn + 1,                                  // {6}
+                lineText,                                        // {7}
+                pointerLine                                      // {8}
             );
 
             context.ReportDiagnostic(diagnostic);
