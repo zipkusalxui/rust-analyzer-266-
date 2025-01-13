@@ -784,6 +784,7 @@ namespace RustAnalyzer
     ""RustEdit_OnMapDataProcessed()"",
     ""RustEdit_NPCSpawned(BasePlayer)"",
     ""RustEdit_APCSpawned(BradleyAPC)"",
+    ""OnNewSave(string)"",
   ]
 }";
 
