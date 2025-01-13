@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using RustAnalyzer.Utils;
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -80,28 +81,33 @@ namespace RustAnalyzer
             if (string.IsNullOrEmpty(suggestions))
                 suggestions = "           - (no similar members)";
 
-            // Get the location and line information
-            var location = memberAccess.Name.GetLocation();
-            var lineSpan = location.GetLineSpan();
+            // Get the location and line information for the name node
+            var nameLocation = memberAccess.Name.GetLocation();
+            var lineSpan = nameLocation.GetLineSpan();
             var startLinePosition = lineSpan.StartLinePosition;
 
-            var sourceText = location.SourceTree?.GetText();
+            var sourceText = nameLocation.SourceTree?.GetText();
             if (sourceText == null) return;
 
             var lineText = sourceText.Lines[startLinePosition.Line].ToString();
 
-            // Compute visual column and create the pointer line
+            // Expand tabs for consistent alignment
+            lineText = TextAlignmentUtils.ExpandTabs(lineText, 4);
+
+            // Column where the member name starts
             int charColumn = startLinePosition.Character;
-            int visualColumn = TextAlignmentUtils.ComputeVisualColumn(lineText, charColumn);
-            string pointerLine = TextAlignmentUtils.CreatePointerLine(lineText, charColumn, memberName.Length);
+
+            // Compute the "visual" column, accounting for tabs
+            int visualColumn = TextAlignmentUtils.ComputeVisualColumn(lineText, charColumn, 4);
+            string pointerLine = TextAlignmentUtils.CreatePointerLine(lineText, charColumn, memberName.Length, 4);
 
             // Retrieve the file name
-            var fileName = System.IO.Path.GetFileName(location.SourceTree?.FilePath ?? string.Empty);
+            var fileName = System.IO.Path.GetFileName(nameLocation.SourceTree?.FilePath ?? string.Empty);
 
             // Create the diagnostic
             var diagnostic = Diagnostic.Create(
                 Rule,
-                location,
+                nameLocation,
                 DetermineMemberKind(memberAccess, semanticModel), // {0} - "method", "property", etc.
                 memberName,                                       // {1} - Member name
                 typeSymbol.ToDisplayString(),                    // {2} - Type where the member is missing
@@ -155,13 +161,13 @@ namespace RustAnalyzer
             double score = 0.0;
 
             // Exact prefix match
-            if (candidate.StartsWith(target, System.StringComparison.OrdinalIgnoreCase))
+            if (candidate.StartsWith(target, StringComparison.OrdinalIgnoreCase))
             {
                 score += 10.0;
             }
 
             // Substring match
-            if (candidate.IndexOf(target, System.StringComparison.OrdinalIgnoreCase) >= 0)
+            if (candidate.IndexOf(target, StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 score += 5.0;
             }
