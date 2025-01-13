@@ -379,10 +379,198 @@ namespace RustAnalyzer.Models
                 ""HookName"": ""API_TRANSFERS"",
                 ""HookParameters"": [""string"", ""BasePlayer"", ""int""],
                 ""PluginName"": ""IQEconomic""
+            },
+            {
+                ""HookName"": ""OnTimedPermissionGranted"",
+                ""HookParameters"": [""string"", ""string"", ""TimeSpan""],
+                ""PluginName"": ""TimedPermissions""
+            },
+            {
+                ""HookName"": ""OnTimedPermissionExtended"",
+                ""HookParameters"": [""string"", ""string"", ""TimeSpan""],
+                ""PluginName"": ""TimedPermissions""
+            },
+            {
+                ""HookName"": ""OnTimedGroupAdded"",
+                ""HookParameters"": [""string"", ""string"", ""TimeSpan""],
+                ""PluginName"": ""TimedPermissions""
+            },
+            {
+                ""HookName"": ""OnTimedGroupExtended"",
+                ""HookParameters"": [""string"", ""string"", ""TimeSpan""],
+                ""PluginName"": ""TimedPermissions""
+            },
+            {
+                ""HookName"": ""SetZoneStatus"",
+                ""HookParameters"": [""string"", ""bool""],
+                ""PluginName"": ""ZoneManager""
+            },
+            {
+                ""HookName"": ""AddFlag"",
+                ""HookParameters"": [""string"", ""string""],
+                ""PluginName"": ""ZoneManager""
+            },
+            {
+                ""HookName"": ""RemoveFlag"",
+                ""HookParameters"": [""string"", ""string""],
+                ""PluginName"": ""ZoneManager""
+            },
+            {
+                ""HookName"": ""AddDisabledFlag"",
+                ""HookParameters"": [""string"", ""string""],
+                ""PluginName"": ""ZoneManager""
+            },
+            {
+                ""HookName"": ""RemoveDisabledFlag"",
+                ""HookParameters"": [""string"", ""string""],
+                ""PluginName"": ""ZoneManager""
+            },
+            {
+                ""HookName"": ""OnEnterZone"",
+                ""HookParameters"": [""string"", ""BasePlayer""],
+                ""PluginName"": ""ZoneManager""
+            },
+            {
+                ""HookName"": ""OnExitZone"",
+                ""HookParameters"": [""string"", ""BasePlayer""],
+                ""PluginName"": ""ZoneManager""
+            },
+            {
+                ""HookName"": ""OnEntityEnterZone"",
+                ""HookParameters"": [""string"", ""BaseEntity""],
+                ""PluginName"": ""ZoneManager""
+            },
+            {
+                ""HookName"": ""OnEntityExitZone"",
+                ""HookParameters"": [""string"", ""BaseEntity""],
+                ""PluginName"": ""ZoneManager""
+            },
+            {
+                ""HookName"": ""GetKitNames"",
+                ""HookParameters"": [""List<string>""],
+                ""PluginName"": ""Kits""
+            },
+            {
+                ""HookName"": ""SetPlayerCooldown"",
+                ""HookParameters"": [""ulong"", ""string"", ""double""],
+                ""PluginName"": ""Kits""
+            },
+            {
+                ""HookName"": ""SetPlayerKitUses"",
+                ""HookParameters"": [""ulong"", ""string"", ""int""],
+                ""PluginName"": ""Kits""
+            },
+            {
+                ""HookName"": ""OnBackpackOpened"",
+                ""HookParameters"": [""BasePlayer"", ""ulong"", ""ItemContainer""],
+                ""PluginName"": ""Backpacks""
+            },
+            {
+                ""HookName"": ""OnBackpackClosed"",
+                ""HookParameters"": [""BasePlayer"", ""ulong"", ""ItemContainer""],
+                ""PluginName"": ""Backpacks""
+            },
+            {
+                ""HookName"": ""OnRaidableBaseStarted"",
+                ""HookParameters"": [""Vector3"", ""int"", ""float""],
+                ""PluginName"": ""RaidableBases""
+            },
+            {
+                ""HookName"": ""OnRaidableBaseEnded"",
+                ""HookParameters"": [""Vector3"", ""int"", ""float""],
+                ""PluginName"": ""RaidableBases""
+            },
+            {
+                ""HookName"": ""OnPlayerEnteredRaidableBase"",
+                ""HookParameters"": [""BasePlayer"", ""Vector3"", ""bool""],
+                ""PluginName"": ""RaidableBases""
+            },
+            {
+                ""HookName"": ""OnPlayerExitedRaidableBase"",
+                ""HookParameters"": [""BasePlayer"", ""Vector3"", ""bool""],
+                ""PluginName"": ""RaidableBases""
+            },
+            {
+                ""HookName"": ""GetPointRaid"",
+                ""HookParameters"": [""ulong"", ""ulong""],
+                ""PluginName"": ""FClan""
+            },
+            {
+                ""HookName"": ""IsFriendOf"",
+                ""HookParameters"": [""ulong""],
+                ""PluginName"": ""Friends""
+            },
+            {
+                ""HookName"": ""GetFriendList"",
+                ""HookParameters"": [""ulong""],
+                ""PluginName"": ""Friends""
+            },
+            {
+                ""HookName"": ""GetFriendList"",
+                ""HookParameters"": [""string""],
+                ""PluginName"": ""Friends""
+            },
+            {
+                ""HookName"": ""GetFriends"",
+                ""HookParameters"": [""ulong""],
+                ""PluginName"": ""Friends""
+            },
+            {
+                ""HookName"": ""GetMaxFriends"",
+                ""HookParameters"": [],
+                ""PluginName"": ""Friends""
+            },
+            {
+                ""HookName"": ""IsFriend"",
+                ""HookParameters"": [""ulong"", ""ulong""],
+                ""PluginName"": ""Friends""
+            },
+            {
+                ""HookName"": ""RemoveFriend"",
+                ""HookParameters"": [""ulong"", ""ulong""],
+                ""PluginName"": ""Friends""
+            },
+            {
+                ""HookName"": ""AddFriend"",
+                ""HookParameters"": [""ulong"", ""ulong""],
+                ""PluginName"": ""Friends""
+            },
+            {
+                ""HookName"": ""AreFriends"",
+                ""HookParameters"": [""ulong"", ""ulong""],
+                ""PluginName"": ""Friends""
+            },
+            {
+                ""HookName"": ""HasFriend"",
+                ""HookParameters"": [""ulong"", ""ulong""],
+                ""PluginName"": ""Friends""
+            },
+            {
+                ""HookName"": ""OnOpenedCase"",
+                ""HookParameters"": [""BasePlayer"", ""string""],
+                ""PluginName"": ""IQCases""
+            },
+            {
+                ""HookName"": ""OnBuyCase"",
+                ""HookParameters"": [""BasePlayer"", ""string""],
+                ""PluginName"": ""IQCases""
+            },
+            {
+                ""HookName"": ""OnSellCase"",
+                ""HookParameters"": [""BasePlayer"", ""string""],
+                ""PluginName"": ""IQCases""
+            },
+            {
+                ""HookName"": ""API_GIVE_CASE"",
+                ""HookParameters"": [""ulong"", ""string"", ""int""],
+                ""PluginName"": ""IQCases""
+            },
+            {
+                ""HookName"": ""API_REMOVE_CASE"",
+                ""HookParameters"": [""ulong"", ""string"", ""int""],
+                ""PluginName"": ""IQCases""
             }
-
-
-
+            
         ]";
 
         public static List<PluginHookModel> GetHooks()
