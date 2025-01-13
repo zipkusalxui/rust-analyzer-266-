@@ -40,6 +40,7 @@ namespace RustAnalyzer
             "{0}", // Placeholder for dynamic description
             Category,
             DiagnosticSeverity.Error,
+            helpLinkUri: "https://github.com/publicrust/rust-analyzer/blob/main/docs/RUST006.md",
             isEnabledByDefault: true);
 
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
