@@ -68,10 +68,9 @@ namespace RustAnalyzer
             if (symbol != null)
                 return;
 
-            // Retrieve all members of the type and filter out compiler-generated fields
+            // Retrieve all members of the type, excluding compiler-generated and inaccessible members
             var members = typeSymbol.GetMembers()
-                .Where(m => !(m is IFieldSymbol field && field.Name.StartsWith("<") && field.Name.EndsWith(">k__BackingField")))
-                .Select(m => m.Name)
+                .Where(m => !IsCompilerGenerated(m) && IsAccessibleMember(m))
                 .ToList();
 
             // Find similar members
@@ -133,22 +132,73 @@ namespace RustAnalyzer
             return "member";
         }
 
-        private string FindSimilarMembers(string targetName, List<string> members)
+        private string FindSimilarMembers(string targetName, List<ISymbol> members)
         {
-            // Find similar members using substring matching and Levenshtein distance
             var similarMembers = members
-                .Where(m => IsSimilar(targetName, m))
-                .Select(m => $"           - `{m}`")
+                .Select(m => new
+                {
+                    Symbol = m,
+                    Score = CalculateSimilarityScore(targetName, m.Name)
+                })
+                .Where(x => x.Score > 0)
+                .OrderByDescending(x => x.Score)
+                .ThenBy(x => x.Symbol.Name)
+                .Take(5) // Limit to 5 suggestions
+                .Select(x => FormatMemberSuggestion(x.Symbol))
                 .ToList();
 
             return string.Join("\n", similarMembers);
         }
 
-        private bool IsSimilar(string target, string candidate)
+        private double CalculateSimilarityScore(string target, string candidate)
         {
-            // Check for substring match or a close match based on Levenshtein distance
-            return candidate.IndexOf(target, System.StringComparison.OrdinalIgnoreCase) >= 0 ||
-                   StringDistance.GetLevenshteinDistance(target, candidate) <= 3;
+            double score = 0.0;
+
+            // Exact prefix match
+            if (candidate.StartsWith(target, System.StringComparison.OrdinalIgnoreCase))
+            {
+                score += 10.0;
+            }
+
+            // Substring match
+            if (candidate.IndexOf(target, System.StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                score += 5.0;
+            }
+
+            // Levenshtein distance
+            int distance = StringDistance.GetLevenshteinDistance(target, candidate);
+            if (distance <= 3)
+            {
+                score += 5.0 - distance; // Closer distance gets higher score
+            }
+
+            return score;
+        }
+
+        private string FormatMemberSuggestion(ISymbol symbol)
+        {
+            // For methods, include their signatures
+            if (symbol is IMethodSymbol methodSymbol)
+            {
+                string parameters = string.Join(", ", methodSymbol.Parameters.Select(p => $"{p.Type.ToDisplayString()} {p.Name}"));
+                return $"           - `{methodSymbol.Name}({parameters})`";
+            }
+
+            // For other members, just return their name
+            return $"           - `{symbol.Name}`";
+        }
+
+        private bool IsCompilerGenerated(ISymbol symbol)
+        {
+            // Exclude compiler-generated members
+            return symbol.Name.StartsWith("<") && symbol.Name.EndsWith(">");
+        }
+
+        private bool IsAccessibleMember(ISymbol symbol)
+        {
+            // Only include accessible members (public, protected, internal, etc.)
+            return symbol.DeclaredAccessibility != Accessibility.Private;
         }
     }
 }
