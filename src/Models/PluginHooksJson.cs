@@ -20,6 +20,50 @@ namespace RustAnalyzer.Models
             },
 
             {
+                ""HookName"": ""OnRealSecond"",
+                ""HookParameters"": [],
+                ""PluginName"": ""aTimeAPI""  
+            },
+
+
+            {
+                ""HookName"": ""OnRustDayStarted"",
+                ""HookParameters"": [],
+                ""PluginName"": ""aTimeAPI""  
+            },
+
+            {
+                ""HookName"": ""OnRustNightStarted"",
+                ""HookParameters"": [],
+                ""PluginName"": ""aTimeAPI""  
+            },
+
+            {
+                ""HookName"": ""OnNewRealHourStarted"",
+                ""HookParameters"": [""int""],
+                ""PluginName"": ""aTimeAPI""  
+            },
+
+            {
+                ""HookName"": ""OnNewRealDayStarted"",
+                ""HookParameters"": [""int""],
+                ""PluginName"": ""aTimeAPI""  
+            },
+
+            {
+                ""HookName"": ""OnNewRealMonthStarted"",
+                ""HookParameters"": [""int""],
+                ""PluginName"": ""aTimeAPI""  
+            },
+
+            {
+                ""HookName"": ""OnNewRealYearStarted"",
+                ""HookParameters"": [""int""],
+                ""PluginName"": ""aTimeAPI""  
+            },
+
+
+            {
                 ""HookName"": ""OnModeratorSendBadWords"",
                 ""HookParameters"": [""BasePlayer"",""string""],
                 ""PluginName"": ""IQChat""  
