@@ -208,8 +208,11 @@ namespace RustAnalyzer
 
         private static bool IsCommand(string methodName)
         {
-            // Простая проверка на подстроку
-            return methodName.ToLower().Contains("command");
+            // Преобразуем строку в нижний регистр для игнорирования регистра
+            string methodNameLower = methodName.ToLower();
+
+            // Проверка на наличие подстрок "command" или "cmd"
+            return methodNameLower.Contains("command") || methodNameLower.Contains("cmd");
         }
 
         /// <summary>
