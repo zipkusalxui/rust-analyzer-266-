@@ -2,6 +2,8 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using RustAnalyzer.src.Configuration;
+using RustAnalyzer.Models;
 using System.Collections.Immutable;
 using System.Linq;
 
@@ -40,20 +42,19 @@ namespace RustAnalyzer
         private void AnalyzeMethodDeclaration(SyntaxNodeAnalysisContext context)
         {
             var methodDeclaration = (MethodDeclarationSyntax)context.Node;
-            var deprecatedHooks = DeprecatedHooksJson.GetHooks();
+            var semanticModel = context.SemanticModel;
+            var methodSymbol = semanticModel.GetDeclaredSymbol(methodDeclaration);
 
-            // Get method signature in the format "MethodName(ParameterType)"
-            var parameters = methodDeclaration.ParameterList.Parameters;
-            var parameterTypes = string.Join(", ", parameters.Select(p => p.Type?.ToString() ?? string.Empty));
-            var methodSignature = $"{methodDeclaration.Identifier.Text}({parameterTypes})";
+            if (methodSymbol == null) return;
 
-            // Check if the method signature matches any deprecated hook
-            var deprecatedHook = deprecatedHooks.Where(h => 
-                $"{h.OldHook.HookName}({string.Join(", ", h.OldHook.HookParameters)})" == methodSignature).FirstOrDefault();
-
-            if (deprecatedHook != null)
+            DeprecatedHookModel deprecatedHook;
+            if (DeprecatedHooksConfiguration.IsHook(methodSymbol, out deprecatedHook))
             {
-                var newHookSignature = deprecatedHook.NewHook != null
+                var parameters = methodSymbol.Parameters;
+                var parameterTypes = string.Join(", ", parameters.Select(p => p.Type.ToString()));
+                var methodSignature = $"{methodSymbol.Name}({parameterTypes})";
+
+                var newHookSignature = deprecatedHook?.NewHook != null
                     ? $"{deprecatedHook.NewHook.HookName}({string.Join(", ", deprecatedHook.NewHook.HookParameters)})"
                     : "no replacement";
 

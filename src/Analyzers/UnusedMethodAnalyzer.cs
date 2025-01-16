@@ -6,6 +6,7 @@ using System.Collections.Immutable;
 using System.Linq;
 using System.Collections.Generic;
 using RustAnalyzer.Utils;
+using RustAnalyzer.src.Configuration;
 
 namespace RustAnalyzer
 {
@@ -82,6 +83,9 @@ namespace RustAnalyzer
                     methodSymbol.Name);
                 return;
             }
+
+            if (DeprecatedHooksConfiguration.IsHook(methodSymbol))
+                return;
 
             
             var rustHooks = StringDistance.FindKeyValues(
