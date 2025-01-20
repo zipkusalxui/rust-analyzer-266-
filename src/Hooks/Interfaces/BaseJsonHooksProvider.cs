@@ -17,10 +17,12 @@ namespace RustAnalyzer.src.Hooks.Interfaces
             // Общая логика парсинга JSON
             try
             {
-                var options = new JsonSerializerOptions { AllowTrailingCommas = true };
-                using var doc = JsonDocument.Parse(JsonContent);
+                var jsonOptions = new JsonSerializerOptions { AllowTrailingCommas = true };
+                var docOptions = new JsonDocumentOptions { AllowTrailingCommas = true };
+                
+                using var doc = JsonDocument.Parse(JsonContent, docOptions);
                 var hooksJson = doc.RootElement.GetProperty("hooks").GetRawText();
-                var hooks = JsonSerializer.Deserialize<List<string>>(hooksJson, options);
+                var hooks = JsonSerializer.Deserialize<List<string>>(hooksJson, jsonOptions);
                 
                 return hooks
                     .Select(HooksUtils.ParseHookString)
