@@ -1,8 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using RustAnalyzer.src.Configuration;
-using RustAnalyzer.src.DeprecatedHooks.Providers;
-using RustAnalyzer.src.Hooks.Providers;
+using RustAnalyzer.src.Hooks.Services;
 using System;
 
 namespace RustAnalyzer.Configuration
@@ -24,16 +23,22 @@ namespace RustAnalyzer.Configuration
             Console.WriteLine($"[RustAnalyzer] Found RustVersion: {version}");
             _version = version;
             
-            if (_version == "LastVersion" && !_isInitialized)
+            if (!_isInitialized)
             {
-                HooksConfiguration.Initialize(new HooksLastProvider());
-                DeprecatedHooksConfiguration.Initialize(new DeprecatedHooksProvider());
-                _isInitialized = true;
-                Console.WriteLine($"[RustAnalyzer] Successfully initialized with version: {_version}");
-            }
-            else
-            {
-                Console.WriteLine($"[RustAnalyzer] Failed to initialize: version must be 'LastV2ersion1', but got '{_version}'");
+                var regularProvider = HooksProviderDiscovery.CreateRegularProvider(version);
+                var deprecatedProvider = HooksProviderDiscovery.CreateDeprecatedProvider(version);
+
+                if (regularProvider != null && deprecatedProvider != null)
+                {
+                    HooksConfiguration.Initialize(regularProvider);
+                    DeprecatedHooksConfiguration.Initialize(deprecatedProvider);
+                    _isInitialized = true;
+                    Console.WriteLine($"[RustAnalyzer] Successfully initialized with version: {_version}");
+                }
+                else
+                {
+                    Console.WriteLine($"[RustAnalyzer] Failed to initialize: no providers found for version '{_version}'");
+                }
             }
         }
 
