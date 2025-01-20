@@ -5,6 +5,8 @@ using Microsoft.CodeAnalysis;
 using System.Collections.Generic;
 using RustAnalyzer.Models;
 using RustAnalyzer.Utils;
+using RustAnalyzer.src.Hooks.Providers;
+using RustAnalyzer.src.Hooks.Interfaces;
 
 namespace RustAnalyzer
 {
@@ -13,20 +15,30 @@ namespace RustAnalyzer
     /// </summary>
     public static class HooksConfiguration
     {
-        private static readonly ImmutableList<HookModel> _hooks;
+        private static IHooksProvider? _currentProvider;
+        private static ImmutableList<HookModel> _hooks = ImmutableList<HookModel>.Empty;
 
         static HooksConfiguration()
         {
             try
             {
-                var hooks = HooksJson.GetHooks();
-                _hooks = ImmutableList.CreateRange(hooks);
+                _currentProvider = new HooksLastProvider() as IHooksProvider;
+                if (_currentProvider != null)
+                {
+                    _hooks = ImmutableList.CreateRange(_currentProvider.GetHooks());
+                }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
+                _currentProvider = null;
                 _hooks = ImmutableList<HookModel>.Empty;
             }
         }
+
+        /// <summary>
+        /// Get current version of game
+        /// </summary>
+        public static string? CurrentVersion => _currentProvider?.Version;
 
         /// <summary>
         /// Gets all configured hook signatures.

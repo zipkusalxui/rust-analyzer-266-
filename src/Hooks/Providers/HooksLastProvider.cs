@@ -1,19 +1,11 @@
-﻿using RustAnalyzer.Models;
-using RustAnalyzer.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Text.Json;
+using RustAnalyzer.src.Hooks.Interfaces;
 
-namespace RustAnalyzer
+namespace RustAnalyzer.src.Hooks.Providers
 {
-    internal static class HooksJson
+    public class HooksLastProvider : BaseJsonHooksProvider 
     {
-        /// <summary>
-        /// Provides access to the Rust plugin hook definitions.
-        /// </summary>
-        public const string Json = @"{
+        public override string Version => "LastVersion";
+        protected override string JsonContent => @"{
   ""hooks"": [
     ""CanAcceptItem(ItemContainer,Item,int)"",
     ""CanAccessVendingMachine(DeliveryDroneConfig,VendingMachine)"",
@@ -784,43 +776,8 @@ namespace RustAnalyzer
     ""RustEdit_OnMapDataProcessed()"",
     ""RustEdit_NPCSpawned(BasePlayer)"",
     ""RustEdit_APCSpawned(BradleyAPC)"",
-    ""OnNewSave(string)"",
+    ""OnNewSave(string)""
   ]
 }";
-
-        /// <summary>
-        /// Gets the list of hooks as a strongly-typed collection.
-        /// </summary>
-        public static List<HookModel> GetHooks()
-        {
-            try
-            {
-                var options = new JsonSerializerOptions
-                {
-                    AllowTrailingCommas = true 
-                };
-
-                using var doc = JsonDocument.Parse(Json, new JsonDocumentOptions
-                {
-                    AllowTrailingCommas = true 
-                });
-
-                var hooksJson = doc.RootElement.GetProperty("hooks").GetRawText();
-                var hooks = JsonSerializer.Deserialize<List<string>>(hooksJson, options);
-
-                return hooks
-                    .Select(HooksUtils.ParseHookString) 
-                    .Where(h => h != null) 
-                    .ToList();
-            }
-            catch (JsonException jsonEx)
-            {
-                throw new JsonException("Failed to parse hooks from JSON", jsonEx);
-            }
-            catch (Exception ex)
-            {
-                throw new Exception("An error occurred while processing hooks.", ex);
-            }
-        }
     }
-}
+}   

@@ -18,6 +18,8 @@
     <AnalysisLevel>latest</AnalysisLevel>
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
     <AnalyzerReleaseTracking>true</AnalyzerReleaseTracking>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
   </PropertyGroup>
 
   <ItemGroup>
