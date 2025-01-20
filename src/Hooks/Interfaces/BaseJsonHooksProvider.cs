@@ -4,12 +4,16 @@ using System.Linq;
 using System.Text.Json;
 using RustAnalyzer.Models;
 using RustAnalyzer.Utils;
+using RustAnalyzer.src.Hooks.Attributes;
+using System.Reflection;
 
 namespace RustAnalyzer.src.Hooks.Interfaces
 {
     public abstract class BaseJsonHooksProvider : IHooksProvider
     {
-        public abstract string Version { get; }
+        public virtual string Version => GetType()
+            .GetCustomAttribute<HooksVersionAttribute>()
+            ?.Version ?? throw new InvalidOperationException("HooksVersion attribute is required");
         protected abstract string JsonContent { get; }
         
         public List<HookModel> GetHooks()

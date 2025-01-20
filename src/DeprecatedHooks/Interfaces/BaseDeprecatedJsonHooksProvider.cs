@@ -3,12 +3,16 @@ using System.Collections.Generic;
 using System.Text.Json;
 using RustAnalyzer.Models;
 using RustAnalyzer.Utils;
+using RustAnalyzer.src.Hooks.Attributes;
+using System.Reflection;
 
 namespace RustAnalyzer.src.DeprecatedHooks.Interfaces
 {
     public abstract class BaseDeprecatedJsonHooksProvider : IDeprecatedHooksProvider
     {
-        public abstract string Version { get; }
+        public virtual string Version => GetType()
+            .GetCustomAttribute<HooksVersionAttribute>()
+            ?.Version ?? throw new InvalidOperationException("HooksVersion attribute is required");
         protected abstract string JsonContent { get; }
         
         public List<DeprecatedHookModel> GetHooks()

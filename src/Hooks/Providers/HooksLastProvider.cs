@@ -1,10 +1,13 @@
+using RustAnalyzer.src.Hooks.Attributes;
 using RustAnalyzer.src.Hooks.Interfaces;
+using System;
+using System.Reflection;
 
 namespace RustAnalyzer.src.Hooks.Providers
 {
+    [HooksVersion("LastVersion")]
     public class HooksLastProvider : BaseJsonHooksProvider 
     {
-        public override string Version => "LastVersion";
         protected override string JsonContent => @"{
   ""hooks"": [
     ""CanAcceptItem(ItemContainer,Item,int)"",
