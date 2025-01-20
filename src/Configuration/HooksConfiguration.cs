@@ -7,6 +7,7 @@ using RustAnalyzer.Models;
 using RustAnalyzer.Utils;
 using RustAnalyzer.src.Hooks.Providers;
 using RustAnalyzer.src.Hooks.Interfaces;
+using RustAnalyzer.Configuration;
 
 namespace RustAnalyzer
 {
@@ -18,15 +19,20 @@ namespace RustAnalyzer
         private static IHooksProvider? _currentProvider;
         private static ImmutableList<HookModel> _hooks = ImmutableList<HookModel>.Empty;
 
-        static HooksConfiguration()
+        /// <summary>
+        /// Initializes the hooks configuration with the specified provider
+        /// </summary>
+        public static void Initialize(IHooksProvider provider)
         {
+            if (provider == null)
+            {
+                throw new ArgumentNullException(nameof(provider));
+            }
+
             try
             {
-                _currentProvider = new HooksLastProvider() as IHooksProvider;
-                if (_currentProvider != null)
-                {
-                    _hooks = ImmutableList.CreateRange(_currentProvider.GetHooks());
-                }
+                _currentProvider = provider;
+                _hooks = ImmutableList.CreateRange(_currentProvider.GetHooks());
             }
             catch (Exception)
             {
