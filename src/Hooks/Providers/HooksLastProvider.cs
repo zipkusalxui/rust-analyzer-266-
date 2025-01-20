@@ -208,7 +208,7 @@ namespace RustAnalyzer.src.Hooks.Providers
     ""OnCodeChanged(BasePlayer,CodeLock,string,bool)"",
     ""OnCodeEntered(CodeLock,BasePlayer,string)"",
     ""OnCollectiblePickedup(CollectibleEntity,BasePlayer,Item)"",
-    ""OnCollectiblePickup(CollectibleEntity,BasePlayer,bool)"",
+    ""OnCollectiblePickup(CollectibleEntity collectible, BasePlayer player, bool eat)"",
     ""OnComposterUpdate(Composter)"",
     ""OnConnectionDequeue(Network.Connection)"",
     ""OnConnectionQueue(Network.Connection)"",
