@@ -81,14 +81,18 @@ namespace RustAnalyzer.Utils
         {
             if (method == null) return null;
 
-            var parameterTypes = method.Parameters
-                .Select(p => GetFriendlyTypeName(p.Type))
+            var parameters = method.Parameters
+                .Select(p => new HookParameter 
+                { 
+                    Type = GetFriendlyTypeName(p.Type),
+                    Name = p.Name
+                })
                 .ToList();
 
             return new HookModel
             {
                 HookName = method.Name,
-                HookParameters = parameterTypes
+                HookParameters = parameters
             };
         }
 
@@ -127,20 +131,42 @@ namespace RustAnalyzer.Utils
 
             // Extracting the hook name and parameters
             var openParenIndex = hookString.IndexOf('(');
-            var closeParenIndex = hookString.IndexOf(')');
+            var closeParenIndex = hookString.LastIndexOf(')');
 
             if (openParenIndex < 0 || closeParenIndex < 0 || closeParenIndex <= openParenIndex)
             {
                 throw new FormatException($"Invalid hook format: {hookString}");
             }
 
-            var hookName = hookString.Substring(0, openParenIndex);
+            var hookName = hookString.Substring(0, openParenIndex).Trim();
             var parameters = hookString.Substring(openParenIndex + 1, closeParenIndex - openParenIndex - 1);
 
-            // Manually trim each parameter after splitting
+            // Split parameters and handle both formats
             var parameterList = parameters
                 .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(p => p.Trim())
+                .Select(p => 
+                {
+                    var parts = p.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    
+                    // Handle type-only format
+                    if (parts.Length == 1)
+                    {
+                        return new HookParameter { Type = parts[0] };
+                    }
+                    
+                    // Handle generic types with parameter names
+                    if (parts[1].Contains("<"))
+                    {
+                        return new HookParameter { Type = parts[0] };
+                    }
+                    
+                    // Handle type with parameter name
+                    return new HookParameter 
+                    { 
+                        Type = parts[0],
+                        Name = parts[1]
+                    };
+                })
                 .ToList();
 
             return new HookModel

@@ -80,7 +80,7 @@ namespace RustAnalyzer
                     var hookParamName = hook.HookParameters[i];
 
                     // Проверяем соответствие типов
-                    if (!HooksUtils.IsTypeCompatible(methodParam, hookParamName))
+                    if (!HooksUtils.IsTypeCompatible(methodParam, hookParamName.Type))
                     {
                         allParametersMatch = false;
                         break;
