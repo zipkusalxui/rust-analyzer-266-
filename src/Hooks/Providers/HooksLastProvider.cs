@@ -10,7 +10,7 @@ namespace RustAnalyzer.src.Hooks.Providers
     {
         protected override string JsonContent => @"{
   ""hooks"": [
-    ""CanAcceptItem(ItemContainer,Item,int)"",
+    ""CanAcceptItem(ItemContainer container, Item item, int targetPos)"",
     ""CanAccessVendingMachine(DeliveryDroneConfig,VendingMachine)"",
     ""CanAdministerVending(BasePlayer,NPCVendingMachine)"",
     ""CanAdministerVending(BasePlayer,VendingMachine)"",
@@ -41,7 +41,7 @@ namespace RustAnalyzer.src.Hooks.Providers
     ""CanCheckFuel(EntityFuelSystem,StorageContainer,BasePlayer)"",
     ""CanClientLogin(Network.Connection)"",
     ""CanCombineDroppedItem(DroppedItem,DroppedItem)"",
-    ""CanCraft(ItemCrafter,ItemBlueprint,int,bool)"",
+    ""CanCraft(ItemCrafter crafter, ItemBlueprint blueprint, int amount, bool free)"",
     ""CanCraft(PlayerBlueprints,ItemDefinition,int)"",
     ""CanCreateWorldProjectile(HitInfo,ItemDefinition)"",
     ""CanDemolish(BasePlayer,StabilityEntity)"",
