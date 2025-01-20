@@ -43,9 +43,31 @@ namespace RustAnalyzer.src.Configuration
             hookInfo = null;
             if (method == null) return false;
 
+            var methodSignature = HooksUtils.GetMethodSignature(method);
+            if (methodSignature == null) return false;
+
             foreach (var hook in _hooks)
             {
-                if (hook.OldHook.HookName == method.Name)
+                // Проверяем имя хука
+                if (hook.OldHook.HookName != methodSignature.HookName)
+                    continue;
+
+                // Проверяем количество параметров
+                if (hook.OldHook.HookParameters.Count != methodSignature.HookParameters.Count)
+                    continue;
+
+                // Проверяем типы параметров
+                bool allParametersMatch = true;
+                for (int i = 0; i < methodSignature.HookParameters.Count; i++)
+                {
+                    if (hook.OldHook.HookParameters[i].Type != methodSignature.HookParameters[i].Type)
+                    {
+                        allParametersMatch = false;
+                        break;
+                    }
+                }
+
+                if (allParametersMatch)
                 {
                     hookInfo = hook;
                     return true;
