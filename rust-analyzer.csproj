@@ -20,7 +20,6 @@
     <AnalyzerReleaseTracking>true</AnalyzerReleaseTracking>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
-    <RustVersion>LastVersion</RustVersion>
   </PropertyGroup>
 
   <ItemGroup>
