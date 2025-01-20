@@ -84,6 +84,15 @@ namespace RustAnalyzer
                 return;
             }
 
+            if (HooksConfiguration.IsKnownHook(methodSymbol))
+                return;
+
+            if (PluginHooksConfiguration.IsKnownHook(methodSymbol))
+                return;    
+
+            if (UnityHooksConfiguration.IsKnownHook(methodSymbol))
+                return;
+
             if (DeprecatedHooksConfiguration.IsHook(methodSymbol))
                 return;
 
@@ -115,7 +124,6 @@ namespace RustAnalyzer
                     methodSymbol.Name,
                     suggestionsText);
             }
-            // Иначе выводим базовый диагноз
             else
             {
                 ReportDiagnostic(context, methodSymbol, MessageFormat, methodSymbol.Name);

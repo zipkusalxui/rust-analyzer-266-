@@ -50,6 +50,24 @@ namespace RustAnalyzer
             return _hooks.Any(s => s.HookName == methodSignature.HookName);
         }
 
+
+        /// <summary>
+        /// Checks if a given method signature exactly matches a known hook signature.
+        /// This method requires the full signature to match.
+        /// </summary>
+        public static bool IsKnownHook(IMethodSymbol method)
+        {
+            if (method == null || method.ContainingType == null ||
+                !HooksUtils.IsRustClass(method.ContainingType))
+                return false;
+
+            var methodSignature = HooksUtils.GetMethodSignature(method);
+            if (methodSignature == null)
+                return false;
+
+            return _hooks.Any(s => s.HookName == methodSignature.HookName);
+        }
+
         /// <summary>
         /// Returns hooks with similar names to the method along with their plugin sources.
         /// </summary>
