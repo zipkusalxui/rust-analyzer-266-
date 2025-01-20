@@ -8,6 +8,7 @@ using RustAnalyzer.Utils;
 using RustAnalyzer.src.Hooks.Providers;
 using RustAnalyzer.src.Hooks.Interfaces;
 using RustAnalyzer.Configuration;
+using RustAnalyzer.src.Hooks.Services;
 
 namespace RustAnalyzer
 {
@@ -31,8 +32,39 @@ namespace RustAnalyzer
 
             try
             {
+                var regularProvider = HooksProviderDiscovery.CreateRegularProvider("Universal");
+                if (regularProvider == null)
+                {
+                    _currentProvider = provider;
+                    _hooks = ImmutableList.CreateRange(provider.GetHooks());
+                    return;
+                }
+
+                var regularHooks = regularProvider.GetHooks();
+                var providerHooks = provider.GetHooks();
+                
+                // Создаем словарь для быстрого поиска хуков по имени и параметрам
+                var hookDictionary = new Dictionary<string, HookModel>();
+                
+                // Сначала добавляем все хуки из regularProvider
+                foreach (var hook in regularHooks)
+                {
+                    var key = $"{hook.HookName}";
+                    hookDictionary[key] = hook;
+                }
+                
+                // Добавляем хуки из provider, только если такого хука еще нет
+                foreach (var hook in providerHooks)
+                {
+                    var key = $"{hook.HookName}";
+                    if (!hookDictionary.ContainsKey(key))
+                    {
+                        hookDictionary[key] = hook;
+                    }
+                }
+
                 _currentProvider = provider;
-                _hooks = ImmutableList.CreateRange(_currentProvider.GetHooks());
+                _hooks = ImmutableList.CreateRange(hookDictionary.Values);
             }
             catch (Exception)
             {
