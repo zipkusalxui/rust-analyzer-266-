@@ -13,11 +13,13 @@
     <IsPackable>true</IsPackable>
     <RootNamespace>RustAnalyzer</RootNamespace>
     <AssemblyName>rust-analyzer</AssemblyName>
-    <Version>8.0.14</Version>
+    <Version>8.0.19</Version>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
     <AnalyzerReleaseTracking>true</AnalyzerReleaseTracking>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
   </PropertyGroup>
 
   <ItemGroup>
